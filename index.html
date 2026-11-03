@@ -346,6 +346,12 @@ input.txt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;backgr
 @media (prefers-color-scheme:dark){.reqrow{background:rgba(0,0,0,.15)}}
 .ticket{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:700;background:var(--accent-soft);color:var(--accent);padding:3px 8px;border-radius:8px;white-space:nowrap}
 .ticketline{font-size:13px;padding:8px 12px;border-radius:12px;background:var(--accent-soft)}
+.tsp h4{margin:14px 0 6px;font-size:13px}
+.tsp .os-kpis{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px}.tsp .os-kpis span{background:#f3f4f6;border-radius:6px;padding:3px 9px;font-size:11.5px}
+.tsp .os-kpis .bad{background:#fde2e4;color:#c81e3a}.tsp .os-kpis .warn{background:#fff4dc;color:#92400e}
+.tsp table.os{table-layout:fixed}.tsp table.os td{vertical-align:top;overflow-wrap:anywhere}.tsp table.os .sub{color:#6b7280;font-size:10.5px}
+.tsp table.os tr.lv3 td{background:#fde2e4}.tsp table.os tr.lv3 td.st{color:#c81e3a;font-weight:700}.tsp table.os tr.lv2 td{background:#fff4dc}
+.tsp table.os th.grp{background:#ecfdf5;color:#0f766e}.tsp .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;white-space:nowrap}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -528,6 +534,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <div class="hd" style="flex-wrap:wrap;gap:8px"><h3>Client jobs &amp; filing deadlines</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <div class="searchbox"><span>⌕</span><input id="jobQ" placeholder="Search client, filing, notes, people…" autocomplete="off"></div>
+          <button class="btn" data-os-open>📋 Outstanding list…</button>
           <button class="btn" id="exportJobs" data-export-open="jobs">⬇ Export to Excel…</button>
           <button class="btn primary" id="addJob">+ New job</button>
         </div></div>
@@ -814,6 +821,24 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <div class="err" id="tsErr" style="color:var(--bad);font-size:13px"></div>
     </div>
     <div class="ft"><button class="btn left" data-close>Close</button><button class="btn" id="tsPdf">⬇ PDF</button><button class="btn primary" id="tsGo">⬇ Excel</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="osScrim">
+  <div class="modal" style="max-width:1040px">
+    <div class="hd"><h3>📋 Outstanding listing</h3><button type="button" class="btn icon" data-close>✕</button></div>
+    <div class="bd">
+      <div class="row2" style="grid-template-columns:1.2fr 1fr 1fr 1fr;align-items:end">
+        <label class="fl">Staff<select id="osWho"></select></label>
+        <label class="fl">Show<select id="osWhat"><option value="both">Jobs and tasks</option><option value="jobs">Outstanding jobs only</option><option value="tasks">Outstanding tasks only</option></select></label>
+        <label class="fl">Jobs due up to<input type="date" id="osUpTo"></label>
+        <label class="fl">Group by<select id="osGroup"><option value="none">Due date</option><option value="prep">Preparer</option><option value="type">Job type</option></select></label>
+      </div>
+      <div class="muted" id="osNote" style="font-size:12.5px"></div>
+      <div id="osPreview" class="tsp-wrap"></div>
+      <div class="err" id="osErr" style="color:var(--bad);font-size:13px"></div>
+    </div>
+    <div class="ft"><button class="btn left" data-close>Close</button><button class="btn" id="osPdf">⬇ PDF</button><button class="btn primary" id="osXlsx">⬇ Excel</button></div>
   </div>
 </div>
 <div class="scrim" id="tempScrim">
@@ -1994,6 +2019,148 @@ function timesheetPreviewHtml(data, esc){
 const JSPDF_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js", AUTOTABLE_URL = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js";
 const loadScript = src => new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("load")); document.head.appendChild(s); });
 async function loadJsPDF(){ if (!window.jspdf) await loadScript(JSPDF_URL); if (!window.jspdf?.jsPDF?.API?.autoTable) await loadScript(AUTOTABLE_URL); if (!window.jspdf?.jsPDF) throw new Error("load"); return window.jspdf.jsPDF; }
+
+// ---------- Outstanding listing (open client jobs + tasks not yet done) ----------
+function openOutstanding(){
+  const me = meMember();
+  const ms = sortedMembers();
+  $("#osWho").innerHTML = `<option value="">Everyone I can see</option>` + ms.map(m => `<option value="${esc(m.id)}">${esc(m.private ? "Administrator (you)" : m.name)}</option>`).join("");
+  if (!isManagerish() && me) $("#osWho").value = me.id;
+  $("#osUpTo").value = ""; $("#osErr").textContent = ""; syncOs(); $("#osScrim").classList.add("on");
+}
+function osData(){
+  const who = $("#osWho").value, what = $("#osWhat").value, upTo = $("#osUpTo").value, group = $("#osGroup").value;
+  const today = ymd(new Date());
+  const jobs = what === "tasks" ? [] : state.jobs.filter(j => j.stage !== "done" && (!who || j.preparerId === who || j.reviewerId === who) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
+    .map(j => { const d = dueInfo(j); const days = j.dueDate ? d.days : null;
+      return { ticket: j.ticket || "", client: j.client || "", type: j.type || "", ya: j.ya || "", due: j.dueDate || "", days,
+        status: !j.dueDate ? "No due date" : days < 0 ? `Overdue ${-days} day${days === -1 ? "" : "s"}` : days === 0 ? "Due today" : days <= 7 ? `Due in ${days} day${days === 1 ? "" : "s"}` : `${days} days left`,
+        level: !j.dueDate ? 0 : days <= 0 ? 3 : days <= 7 ? 2 : 1,
+        stage: STAGES[j.stage] || STAGES.todo, prep: memberName(j.preparerId) || "—", rev: memberName(j.reviewerId) || "—", hours: round1(jobHours(j) / 60), notes: j.notes || "" }; })
+    .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.client.localeCompare(b.client));
+  const tasks = what === "jobs" ? [] : state.items.filter(i => i.category !== "leave" && i.category !== "meeting" && i.status !== "done" && i.date <= today && (!who || i.memberId === who))
+    .map(i => { const j = jobById(i.jobId); const age = Math.round((parse(today) - parse(i.date)) / 864e5);
+      return { date: i.date, age, staff: memberName(i.memberId), task: i.title || "", client: j ? j.client : "", ticket: j?.ticket || "", status: STATUS[i.status] || i.status, notes: i.notes || "" }; })
+    .sort((a, b) => a.date.localeCompare(b.date) || a.staff.localeCompare(b.staff));
+  const groups = [];
+  if (group === "none") groups.push({ title: "", rows: jobs });
+  else { const key = group === "prep" ? "prep" : "type"; const names = [...new Set(jobs.map(r => r[key]))].sort((a, b) => a.localeCompare(b));
+    names.forEach(n => groups.push({ title: (group === "prep" ? "Preparer: " : "Job type: ") + n, rows: jobs.filter(r => r[key] === n) })); }
+  const whoName = who ? (memberById(who)?.private ? "Administrator" : memberName(who)) : "All staff";
+  return { who: whoName, today, upTo, jobs, groups, tasks, what,
+    counts: { open: jobs.length, overdue: jobs.filter(r => r.days !== null && r.days < 0).length, week: jobs.filter(r => r.days !== null && r.days >= 0 && r.days <= 7).length, review: jobs.filter(r => r.stage === STAGES.review).length, tasks: tasks.length } };
+}
+function syncOs(){
+  const d = osData(); const c = d.counts;
+  $("#osNote").textContent = `${c.open} outstanding job${c.open === 1 ? "" : "s"} (${c.overdue} overdue, ${c.week} due within 7 days) · ${c.tasks} task${c.tasks === 1 ? "" : "s"} not marked done · only people you can see.`;
+  $("#osPreview").innerHTML = osPreviewHtml(d);
+}
+const osDmy = ds => ds ? ds.split("-").reverse().join("/") : "";
+function osPreviewHtml(d){
+  const c = d.counts;
+  const jobTable = g => `<table class="os"><colgroup><col style="width:12.5%"><col style="width:17%"><col style="width:11%"><col style="width:5%"><col style="width:9%"><col style="width:10%"><col style="width:9.5%"><col style="width:10%"><col style="width:10%"><col style="width:6%"></colgroup>
+    <thead>${g.title ? `<tr><th colspan="10" class="l grp">${esc(g.title)} · ${g.rows.length}</th></tr>` : ""}<tr><th>Ticket no.</th><th>Client</th><th>Job type</th><th>YA</th><th>Due date</th><th>Status</th><th>Stage</th><th>Preparer</th><th>Reviewer</th><th>Hours</th></tr></thead>
+    <tbody>${g.rows.map(r => `<tr class="lv${r.level}"><td class="c mono">${esc(r.ticket)}</td><td>${esc(r.client)}${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ""}</td><td>${esc(r.type)}</td><td class="c">${esc(r.ya)}</td><td class="c">${osDmy(r.due)}</td><td class="st">${esc(r.status)}</td><td>${esc(r.stage)}</td><td>${esc(r.prep)}</td><td>${esc(r.rev)}</td><td class="c">${r.hours || ""}</td></tr>`).join("") || `<tr><td colspan="10" class="c muted">No outstanding jobs 🎉</td></tr>`}</tbody></table>`;
+  return `<div class="tsp">
+    <div class="tsp-t">Outstanding Listing</div>
+    <div class="tsp-meta"><b>Staff:</b> ${esc(d.who)} &nbsp;·&nbsp; <b>As at:</b> ${osDmy(d.today)}${d.upTo ? ` &nbsp;·&nbsp; <b>Jobs due up to:</b> ${osDmy(d.upTo)}` : ""}</div>
+    <div class="os-kpis"><span><b>${c.open}</b> outstanding jobs</span><span class="bad"><b>${c.overdue}</b> overdue</span><span class="warn"><b>${c.week}</b> due within 7 days</span><span><b>${c.review}</b> in review</span><span><b>${c.tasks}</b> tasks not done</span></div>
+    ${d.what !== "tasks" ? `<h4>A. Outstanding client jobs</h4>${d.groups.map(jobTable).join("")}` : ""}
+    ${d.what !== "jobs" ? `<h4>${d.what === "tasks" ? "" : "B. "}Tasks not marked done (up to today)</h4><table class="os"><thead><tr><th>Date</th><th>Days</th><th>Staff</th><th>Task</th><th>Client</th><th>Ticket no.</th><th>Status</th></tr></thead><tbody>
+      ${d.tasks.map(t => `<tr class="${t.status === STATUS.blocked ? "lv3" : ""}"><td class="c">${osDmy(t.date)}</td><td class="c">${t.age}</td><td>${esc(t.staff)}</td><td>${esc(t.task)}</td><td>${esc(t.client)}</td><td class="c mono">${esc(t.ticket)}</td><td>${esc(t.status)}</td></tr>`).join("") || `<tr><td colspan="7" class="c muted">Nothing outstanding 🎉</td></tr>`}</tbody></table>` : ""}
+  </div>`;
+}
+async function osXlsx(d){
+  const X = await loadExcelJS();
+  const wb = new X.Workbook(); wb.creator = "CCTeamSync";
+  const ws = wb.addWorksheet("Outstanding", { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true, margins: { left: .3, right: .3, top: .5, bottom: .5, header: .2, footer: .2 } },
+    headerFooter: { oddFooter: `&L&8Outstanding listing · ${d.who} · as at ${osDmy(d.today)}&R&8Page &P of &N` }, views: [{ showGridLines: false }] });
+  ws.columns = [16, 30, 20, 7, 12, 18, 18, 18, 18, 8, 36].map(w => ({ width: w }));
+  const thin = { style: "thin", color: { argb: "FF9AA5B1" } }; const box = { top: thin, left: thin, bottom: thin, right: thin };
+  const head = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDAEDF3" } };
+  const fills = { 3: "FFFDE2E4", 2: "FFFFF4DC" };
+  let r = 1;
+  ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: "Outstanding Listing", font: { name: "Arial", size: 14, bold: true, underline: true } }); r++;
+  ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Jobs due up to: ${osDmy(d.upTo)}` : ""}`, font: { name: "Arial", size: 10, bold: true } }); r++;
+  ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${d.counts.open} outstanding jobs · ${d.counts.overdue} overdue · ${d.counts.week} due within 7 days · ${d.counts.review} in review · ${d.counts.tasks} tasks not done`, font: { name: "Arial", size: 10, color: { argb: "FF4B5563" } } }); r += 2;
+  const headerRow = cols => { cols.forEach((t, k) => { const c = ws.getCell(r, k + 1); c.value = t; c.font = { name: "Arial", size: 10, bold: true }; c.fill = head; c.border = box; c.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; }); ws.getRow(r).height = 18; r++; };
+  const serial = ds => { const [y, m, dd] = ds.split("-").map(Number); return (Date.UTC(y, m - 1, dd) - Date.UTC(1899, 11, 30)) / 864e5; };
+  if (d.what !== "tasks") {
+    ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: "A. Outstanding client jobs", font: { name: "Arial", size: 11, bold: true } }); r++;
+    for (const g of d.groups) {
+      if (g.title) { ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${g.title} · ${g.rows.length}`, font: { name: "Arial", size: 10, bold: true, color: { argb: "FF0F766E" } } }); r++; }
+      headerRow(["Ticket no.", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours", "Notes"]);
+      if (!g.rows.length) { ws.mergeCells(`A${r}:K${r}`); ws.getCell(`A${r}`).value = "No outstanding jobs"; r++; }
+      for (const x of g.rows) {
+        const vals = [x.ticket, x.client, x.type, x.ya, x.due ? serial(x.due) : "", x.status, x.stage, x.prep, x.rev, x.hours || "", x.notes];
+        vals.forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.border = box; c.font = { name: "Arial", size: 10, bold: k === 5 && x.level === 3, color: k === 5 && x.level === 3 ? { argb: "FFC81E3A" } : undefined };
+          c.alignment = { vertical: "top", wrapText: k === 1 || k === 10, horizontal: [0, 3, 4, 9].includes(k) ? "center" : "left" };
+          if (fills[x.level]) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fills[x.level] } }; });
+        ws.getCell(r, 5).numFmt = "dd/mm/yyyy"; r++;
+      }
+      r++;
+    }
+  }
+  if (d.what !== "jobs") {
+    ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${d.what === "tasks" ? "" : "B. "}Tasks not marked done (up to today)`, font: { name: "Arial", size: 11, bold: true } }); r++;
+    headerRow(["Date", "Task", "Client", "Days", "Status", "Ticket no.", "Staff", "Notes"]);
+    if (!d.tasks.length) { ws.mergeCells(`A${r}:H${r}`); ws.getCell(`A${r}`).value = "Nothing outstanding"; r++; }
+    for (const t of d.tasks) {
+      [serial(t.date), t.task, t.client, t.age, t.status, t.ticket, t.staff, t.notes].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.border = box; c.font = { name: "Arial", size: 10 };
+        c.alignment = { vertical: "top", wrapText: k === 1 || k === 7, horizontal: [0, 3, 5].includes(k) ? "center" : "left" }; if (t.status === STATUS.blocked) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fills[3] } }; });
+      ws.getCell(r, 1).numFmt = "dd/mm/yyyy"; r++;
+    }
+  }
+  return wb.xlsx.writeBuffer();
+}
+function osPdf(J, d){
+  const doc = new J({ unit: "pt", format: "a4", orientation: "landscape" });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 28, ink = [31, 41, 55], head = [218, 237, 243];
+  doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...ink); doc.text("Outstanding Listing", M, 36);
+  doc.setFontSize(9.5); doc.text(`Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Jobs due up to: ${osDmy(d.upTo)}` : ""}`, M, 52);
+  doc.setFont("helvetica", "normal"); doc.setTextColor(75, 85, 99);
+  doc.text(`${d.counts.open} outstanding jobs · ${d.counts.overdue} overdue · ${d.counts.week} due within 7 days · ${d.counts.review} in review · ${d.counts.tasks} tasks not done`, M, 66);
+  const base = { theme: "grid", margin: { left: M, right: M }, styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [154, 165, 177], lineWidth: .4, textColor: ink, valign: "top" },
+    headStyles: { fillColor: head, textColor: ink, fontStyle: "bold", halign: "center" } };
+  let y = 80;
+  const title = (t, sz = 10.5, col = ink) => { if (y > H - 80) { doc.addPage(); y = 36; } doc.setFont("helvetica", "bold"); doc.setFontSize(sz); doc.setTextColor(...col); doc.text(t, M, y + 10); y += 16; };
+  if (d.what !== "tasks") {
+    title("A. Outstanding client jobs");
+    for (const g of d.groups) {
+      if (g.title) title(`${g.title} · ${g.rows.length}`, 9.5, [15, 118, 110]);
+      doc.autoTable({ ...base, startY: y, head: [["Ticket no.", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours"]],
+        body: g.rows.length ? g.rows.map(x => [x.ticket, x.client + (x.notes ? "\n" + x.notes : ""), x.type, x.ya, osDmy(x.due), x.status, x.stage, x.prep, x.rev, x.hours || ""]) : [[{ content: "No outstanding jobs", colSpan: 10, styles: { halign: "center", textColor: [107, 114, 128] } }]],
+        columnStyles: { 0: { cellWidth: 70, halign: "center" }, 1: { cellWidth: 150 }, 3: { cellWidth: 30, halign: "center" }, 4: { cellWidth: 56, halign: "center" }, 9: { cellWidth: 36, halign: "center" } },
+        didParseCell: h => { if (h.section !== "body" || !g.rows[h.row.index]) return; const lv = g.rows[h.row.index].level;
+          if (lv === 3) { h.cell.styles.fillColor = [253, 226, 228]; if (h.column.index === 5) { h.cell.styles.textColor = [200, 30, 58]; h.cell.styles.fontStyle = "bold"; } } else if (lv === 2) h.cell.styles.fillColor = [255, 244, 220]; } });
+      y = doc.lastAutoTable.finalY + 12;
+    }
+  }
+  if (d.what !== "jobs") {
+    title(`${d.what === "tasks" ? "" : "B. "}Tasks not marked done (up to today)`);
+    doc.autoTable({ ...base, startY: y, head: [["Date", "Days", "Staff", "Task", "Client", "Ticket no.", "Status"]],
+      body: d.tasks.length ? d.tasks.map(t => [osDmy(t.date), t.age, t.staff, t.task, t.client, t.ticket, t.status]) : [[{ content: "Nothing outstanding", colSpan: 7, styles: { halign: "center", textColor: [107, 114, 128] } }]],
+      columnStyles: { 0: { cellWidth: 56, halign: "center" }, 1: { cellWidth: 34, halign: "center" }, 5: { cellWidth: 70, halign: "center" } },
+      didParseCell: h => { if (h.section === "body" && d.tasks[h.row.index]?.status === STATUS.blocked) h.cell.styles.fillColor = [253, 226, 228]; } });
+  }
+  const n = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(120);
+    doc.text(`Outstanding listing · ${d.who} · as at ${osDmy(d.today)}`, M, H - 14); doc.text(`Page ${i} of ${n}`, W - M, H - 14, { align: "right" }); }
+  return doc.output("arraybuffer");
+}
+async function downloadOutstanding(kind){
+  const d = osData(); const btn = $(kind === "pdf" ? "#osPdf" : "#osXlsx"); btn.disabled = true; $("#osErr").textContent = "";
+  try {
+    let buf;
+    if (kind === "pdf") { let J; try { J = await loadJsPDF(); } catch (_) { throw new Error("Couldn't load the PDF tools — check your connection and try again"); } buf = osPdf(J, d); }
+    else { try { buf = await osXlsx(d); } catch (e) { if (String(e.message) === "load") throw new Error("Couldn't load the Excel tools — check your connection and try again"); throw e; } }
+    const who = d.who === "All staff" ? "All staff" : d.who;
+    await downloadsApi.save({ filename: `Outstanding listing - ${who} - ${osDmy(d.today).replace(/\//g, "-")}.${kind === "pdf" ? "pdf" : "xlsx"}`, data: new Uint8Array(buf) });
+    toast(kind === "pdf" ? "Outstanding list PDF downloaded" : "Outstanding list Excel downloaded");
+  } catch (e) { if (e?.code === "declined") return; $("#osErr").textContent = e.message || "Couldn't create the file."; }
+  finally { btn.disabled = false; }
+}
+
 function openTimesheet(){
   const ms = visibleMembers().length ? sortedMembers() : [];
   const me = meMember();
@@ -2706,6 +2873,7 @@ const step = dir => { const d = new Date(state.date);
   state.date = d; render(); };
 ["xpFrom","xpTo","xpAll"].forEach(id => $("#" + id).addEventListener("change", () => { if (id !== "xpAll") $("#xpAll").checked = false; syncXp(); }));
 ["tsWho","tsWeek"].forEach(id => $("#" + id).addEventListener("change", syncTs));
+["osWho","osWhat","osUpTo","osGroup"].forEach(id => $("#" + id).addEventListener("change", syncOs));
 $("#tlFrom").addEventListener("change", setTlRange); $("#tlTo").addEventListener("change", setTlRange);
 $("#tlRangeClear").addEventListener("click", () => { state.tlRange = null; render(); });
 $("#tlMonth").addEventListener("change", pickTlMonth); $("#tlYear").addEventListener("change", pickTlMonth);
@@ -2740,6 +2908,9 @@ document.addEventListener("click", e => {
   const xp = t.closest("[data-xp]"); if (xp) { const [a, b] = xp.dataset.xp.split("|"); $("#xpFrom").value = a; $("#xpTo").value = b; $("#xpAll").checked = false; syncXp(); return; }
   if (t.closest("#xpGo")) { runExport(); return; }
   if (t.closest("[data-ts-open]")) { openTimesheet(); return; }
+  if (t.closest("[data-os-open]")) { openOutstanding(); return; }
+  if (t.closest("#osXlsx")) { downloadOutstanding("xlsx"); return; }
+  if (t.closest("#osPdf")) { downloadOutstanding("pdf"); return; }
   const tw = t.closest("[data-tsweek]"); if (tw) { $("#tsWeek").value = ymd(addDays(new Date(), 7 * +tw.dataset.tsweek)); syncTs(); return; }
   if (t.closest("#tsGo")) { downloadTimesheet("xlsx"); return; }
   if (t.closest("#tsPdf")) { downloadTimesheet("pdf"); return; }
