@@ -1473,7 +1473,7 @@ function renderLog(){
 }
 // ---------- Client jobs, deadlines & review ----------
 const STAGES = { todo: "Not started", prep: "Preparing", review: "In review", changes: "Changes requested", done: "Filed / done" };
-const FILINGS = window.FILINGS_LIST = ["Form C", "CP204", "CP204A (revision)", "Form E", "Form BE", "Form B", "Form P", "TP documentation", "Tax audit", "Tax investigation", "Advisory", "Client Engagement", "Client Termination", "Strike Off", "Winding Up", "Backlog Form C", "Other"];
+const FILINGS = window.FILINGS_LIST = ["Form C", "CP204", "CP204A (revision)", "Form E", "Form BE", "Form B", "Form P", "TP documentation", "Tax audit", "Tax investigation", "Advisory", "Client Engagement", "Client Termination", "Strike Off", "Winding Up", "Backlog Form C", "Due Diligence", "Other"];
 const lastDay = (y, m) => new Date(y, m + 1, 0);          // m = 0-based month
 function memberName(id){
   if (!id) return "—";
