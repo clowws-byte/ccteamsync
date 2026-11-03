@@ -337,9 +337,15 @@ input.txt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;backgr
 @media (prefers-color-scheme:dark){.tsp-wrap{background:#2a2348}}
 
 .login-new{text-align:center;font-size:13.5px;margin-top:4px;padding-top:12px;border-top:1px dashed var(--line);color:var(--muted)}
-.reqrow{display:grid;grid-template-columns:1.6fr 1fr 1.2fr auto auto;gap:8px;align-items:center;margin-top:10px;padding:8px;border-radius:12px;background:rgba(255,255,255,.65)}
+.tabbadge{display:inline-block;min-width:18px;padding:0 5px;border-radius:999px;background:#ff5a6e;color:#fff;font-size:11px;line-height:18px;margin-left:3px;animation:pop .4s var(--bounce,ease)}
+.pendrow td{background:rgba(255,194,75,.08)}
+.rolerights{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:8px}
+.rolerights label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--muted)}
+.reqrow{display:grid;grid-template-columns:1.6fr 1fr 1fr 1.2fr auto auto;gap:8px;align-items:center;margin-top:10px;padding:8px;border-radius:12px;background:rgba(255,255,255,.65)}
 @media (max-width:860px){.reqrow{grid-template-columns:1fr 1fr}}
 @media (prefers-color-scheme:dark){.reqrow{background:rgba(0,0,0,.15)}}
+.ticket{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:700;background:var(--accent-soft);color:var(--accent);padding:3px 8px;border-radius:8px;white-space:nowrap}
+.ticketline{font-size:13px;padding:8px 12px;border-radius:12px;background:var(--accent-soft)}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -657,7 +663,9 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <div class="row2" id="accessWrap">
         <label class="fl">Role<select name="access"></select></label>
         <label class="fl">Reports to<select name="managerId"></select></label>
+        <label class="fl" style="grid-column:1/-1">User rights<select name="rights"></select></label>
       </div>
+      <div class="nudge" id="memPending" style="display:none;margin:0"><b>⏳ Waiting for approval</b>Set their role, who they report to and their rights, then click <b style="display:inline">Save &amp; approve</b>.</div>
       <div class="fl" id="linkWrap" style="font-size:12px;font-weight:500;color:var(--muted)">Linked account<div id="linkInfo" style="font-size:13px;color:var(--ink);font-weight:400"></div></div>
       <div class="row2">
         <label class="fl">Working hours start<input type="time" name="workStart" value="09:00"></label>
@@ -669,7 +677,8 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
     <div class="ft">
       <button type="button" class="btn danger left" id="delMem">Remove</button>
       <button type="button" class="btn" data-close>Cancel</button>
-      <button type="submit" class="btn primary">Save</button>
+      <button type="button" class="btn danger" id="memReject" style="display:none">Reject</button>
+      <button type="submit" class="btn primary" id="memSave">Save</button>
     </div>
   </form>
 </div>
@@ -679,6 +688,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
   <form class="modal" id="jobForm" style="max-width:540px">
     <div class="hd"><h3 id="jobTitle">New client job</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
+      <div class="ticketline" id="jobTicket" style="display:none"></div>
       <label class="fl">Client<input name="client" required maxlength="100" list="clientList" placeholder="e.g. XYZ Sdn Bhd"><datalist id="clientList"></datalist></label>
       <div class="row2">
         <label class="fl">Filing / job type<select name="type" id="jobTypeSel"></select></label>
@@ -863,6 +873,12 @@ function supervisorsFor(m, access){
     .sort((a, b) => rank(normAccess(a.access)) - rank(normAccess(b.access)) || String(a.name).localeCompare(b.name));
 }
 const supOptions = (list, sel, access) => (normAccess(access) === "hod" ? `<option value="">— Top level (reports to no one)</option>` : `<option value="">— Not assigned</option>`) + list.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? "selected" : ""}>${esc(x.name)} · ${esc(roleLabel(normAccess(x.access)))}</option>`).join("");
+// user rights: view = view only, edit = can edit, full = same as Administrator (except the Administrator's private schedule)
+const RIGHTS = [["view","View only"],["edit","Can edit"],["full","Full access (same as Administrator)"]];
+const rightOf = m => m?.isAdmin ? "full" : m?.canEdit === false ? "view" : "edit";
+const rightPatch = r => r === "full" ? { canEdit: true, isAdmin: true } : r === "view" ? { canEdit: false, isAdmin: false } : { canEdit: true, isAdmin: false };
+const rightOptions = sel => RIGHTS.filter(([v]) => v !== "full" || state.fullAccessReady || sel === "full").map(([v, l]) => `<option value="${v}" ${sel === v ? "selected" : ""}>${l}</option>`).join("");
+const roleRights = () => ({ hod: "edit", sm: "edit", manager: "edit", senior: "edit", associate: "edit", ...(state.roleRights || {}) });
 const hasReports = id => !!id && state.allMembers.some(x => x.managerId === id && !x.private);
 
 // ---------- data layer (Supabase) ----------
@@ -906,7 +922,7 @@ async function commit(kind, id, after, opts = {}){
 const FIELDS = {
   items: [["title","Task"],["memberId","Assigned to"],["jobId","Client job"],["date","Date"],["start","Start"],["end","End"],["status","Status"],["category","Type"],["notes","Notes"]],
   jobs: [["client","Client"],["type","Filing"],["ya","YA"],["dueDate","Due"],["preparerId","Preparer"],["reviewerId","Reviewer"],["stage","Stage"],["notes","Notes"]],
-  members: [["name","Name"],["role","Job title"],["userId","Email"],["access","Access"],["managerId","Reports to"],["canEdit","Rights"],["seeTeam","Can see"],["loans","Loans"],["workStart","Hours from"],["workEnd","Hours to"],["private","Private"]],
+  members: [["name","Name"],["role","Job title"],["userId","Email"],["access","Access"],["managerId","Reports to"],["canEdit","Rights"],["isAdmin","Full access"],["seeTeam","Can see"],["loans","Loans"],["workStart","Hours from"],["workEnd","Hours to"],["private","Private"]],
 };
 function fmtVal(k, v){
   if (k === "canEdit" && (v === undefined || v === null)) return "Can edit";
@@ -922,6 +938,7 @@ function fmtVal(k, v){
   if (k === "access") return roleLabel(v);
   if (k === "private") return v ? "yes" : "no";
   if (k === "canEdit") return v === false ? "View only" : "Can edit";
+  if (k === "isAdmin") return v ? "Yes (same as Administrator)" : "No";
   if (k === "seeTeam") return v === false ? "Own schedule only" : "Own + team";
   if (k === "notes") return `"${String(v).slice(0,40)}${String(v).length>40?"…":""}"`;
   return String(v);
@@ -936,7 +953,8 @@ async function logChange(e){
   e = { ...e, before: strip(e.before), after: strip(e.after) };
   const me = meMember();
   const subject = e.after || e.before || {};
-  const entry = { at: Date.now(), uid: state.me.uid || null, by: me?.id || null, byName: me?.name || "Unknown", userId: me?.userId || "",
+  const isPriv = (e.kind === "items" && (subject._p === "1" || state.allMembers.find(m => m.id === subject.memberId)?.private)) || (e.kind === "members" && subject.private);
+  const entry = { ...(isPriv ? { priv: "1" } : {}), at: Date.now(), uid: state.me.uid || null, by: me?.id || null, byName: me?.name || "Unknown", userId: me?.userId || "",
     action: e.action, kind: e.kind, targetId: e.id, title: e.kind === "jobs" ? jobLabel(subject) : (subject.title || subject.name || ""),
     who: e.kind === "items" ? (state.allMembers.find(m => m.id === subject.memberId)?.name || "") : e.kind === "jobs" ? memberName(subject.preparerId) : "",
     date: subject.date || subject.dueDate || "", changes: diff(e.kind, e.before, e.after), before: e.before, after: e.after, batch: e.batch };
@@ -958,7 +976,8 @@ async function loadLog(){
 function identify(){
   const all = [...raw.pmembers.map(m => ({ ...m, private: true })), ...raw.members];
   const me = all.find(m => m.uid && m.uid === state.me.uid) || null;
-  state.isOwner = !!me && me.access === "director";
+  state.isMain = !!me && me.access === "director";
+  state.isOwner = state.isMain || (!!me && !!me.isAdmin && !me.pending);
   state.me.memberId = me?.id || null;
   state.names = Object.fromEntries(all.filter(m => m.uid).map(m => [m.uid, m.userId || m.name]));
 }
@@ -967,6 +986,8 @@ async function loadAll(){
   raw.members = m.filter(x => !x.private); raw.pmembers = m.filter(x => x.private);
   raw.items = i.filter(x => x._p !== "1"); raw.pitems = i.filter(x => x._p === "1");
   raw.jobs = j;
+  try { const { data: cf } = await sb.from("config").select("id,data").in("id", ["roleRights", "features"]);
+    const by = Object.fromEntries((cf || []).map(r => [r.id, r.data])); state.roleRights = by.roleRights || {}; state.fullAccessReady = !!by.features?.fullAccess; } catch(_) {}
   identify(); derive();
   await loadLog();
 }
@@ -1190,6 +1211,7 @@ function render(){
   $("#addMember").style.display = state.isOwner && state.canWrite ? "" : "none";
   $("#clearDemo").style.display = state.isOwner && (state.allMembers.some(m=>m.demo) || state.allItems.some(i=>i.demo) || state.allJobs.some(j=>j.demo)) ? "" : "none";
   renderSchedBar(); greet(); onViewEnter();
+  const tb = document.querySelector('#tabs button[data-v="team"]'); if (tb) { const n = state.isOwner ? (state.pendingMembers || []).length : 0; tb.innerHTML = "Team" + (n ? ` <span class="tabbadge">${n}</span>` : ""); }
   $(".datenav").style.visibility = (["jobs","team","log","admin"].includes(state.view)) ? "hidden" : "";
 
   if (state.view === "log") return renderLog();
@@ -1432,9 +1454,11 @@ function renderCalendar(){
 
 function renderTeam(){
   const ms = sortedMembers();
+  const pend = state.isOwner ? (state.pendingMembers || []) : [];
   resolveNames(ms.map(m => m.uid).filter(Boolean));
   const me = meMember();
-  $("#members").innerHTML = `<tr><th>Name</th><th>Job title</th><th>Role</th><th>Reports to</th>${state.isOwner?"<th>Linked account</th>":""}<th>Tasks this week</th><th></th></tr>` + (ms.map(m => {
+  $("#members").innerHTML = `<tr><th>Name</th><th>Job title</th><th>Role</th><th>Reports to</th>${state.isOwner?"<th>Linked account</th>":""}<th>Tasks this week</th><th></th></tr>` + pend.map(m => `<tr class="pendrow"><td><div class="who">${avatar(m)}${esc(m.name)} <span class="pill st-blocked" style="background:#fff2d9;color:#b45309">⏳ Waiting approval</span></div></td><td>${esc(m.role||"—")}</td><td><span class="muted">Not set</span></td><td><span class="muted">—</span></td><td><code>${esc(m.userId||"")}</code></td><td class="muted">Requested ${m.requestedAt ? esc(new Date(m.requestedAt).toLocaleDateString("en-GB",{day:"numeric",month:"short"})) : ""}</td>
+      <td><div class="act"><button class="btn primary" data-pend-edit="${esc(m.id)}">Set up &amp; approve</button><button class="btn danger" data-req-no="${esc(m.id)}">Reject</button></div></td></tr>`).join("") + (ms.map(m => {
     const ws = weekStart(new Date()); const days = [...Array(7)].map((_,i)=>ymd(addDays(ws,i)));
     const n = state.items.filter(i => i.memberId===m.id && days.includes(i.date) && i.category!=="leave");
     const mgr = state.allMembers.find(x => x.id === m.managerId);
@@ -1481,7 +1505,7 @@ function memberName(id){
   if (m) return m.private ? (state.isOwner ? "You (Administrator)" : "Administrator") : m.name;
   return state.isOwner ? "removed person" : "Administrator";
 }
-const jobLabel = j => j ? `${j.client || "Client"} · ${j.type || "Job"}${j.ya ? " YA" + j.ya : ""}` : "";
+const jobLabel = j => j ? `${j.ticket ? j.ticket + " · " : ""}${j.client || "Client"} · ${j.type || "Job"}${j.ya ? " YA" + j.ya : ""}` : "";
 const jobById = id => state.allJobs.find(j => j.id === id);
 // Suggested statutory dates (Malaysia). Returns {date, note} or null.
 function suggestDue(type, ref, ya){
@@ -1531,7 +1555,7 @@ function filteredJobs(){
   return state.jobs.filter(j => (!JF.stage.length || JF.stage.includes(j.stage || "todo")) && inDue(j, JF.due) &&
       (!JF.type.length || JF.type.includes(j.type)) && (!JF.client.length || JF.client.includes(j.client)) &&
       (!JF.prep.length || JF.prep.includes(j.preparerId)) && (!JF.rev.length || JF.rev.includes(j.reviewerId)) && (!JF.ya.length || JF.ya.includes(j.ya)) &&
-      (!q || q.split(/\s+/).every(w => [j.client, j.type, j.ya && "ya" + j.ya, j.ya, j.notes, memberName(j.preparerId), memberName(j.reviewerId), STAGES[j.stage]].join(" ").toLowerCase().includes(w))))
+      (!q || q.split(/\s+/).every(w => [j.ticket, j.client, j.type, j.ya && "ya" + j.ya, j.ya, j.notes, memberName(j.preparerId), memberName(j.reviewerId), STAGES[j.stage]].join(" ").toLowerCase().includes(w))))
     .sort((a,b) => (a.stage === "done") - (b.stage === "done") || String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
 }
 function renderJobs(){
@@ -1549,14 +1573,14 @@ function renderJobs(){
   const rows = filteredJobs();
   const nAct = countActive("j");
   $("#addJob").style.display = state.canWrite && editableMembers().length ? "" : "none";
-  $("#jobTable").innerHTML = `<tr><th>Client</th><th>Filing</th><th>Due</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
+  $("#jobTable").innerHTML = `<tr><th>Ticket no.</th><th>Client</th><th>Filing</th><th>Due</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
     const d = dueInfo(j);
-    return `<tr><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
+    return `<tr><td><span class="ticket">${j.ticket ? esc(j.ticket) : `<span class="muted" title="Assigned when saved">…</span>`}</span></td><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
       <td>${esc(j.type)}${j.ya ? `<div class="muted" style="font-size:12px">YA ${esc(j.ya)}</div>` : ""}</td>
       <td><span class="${d.cls}">${esc(d.text)}</span></td><td>${esc(memberName(j.preparerId))}</td><td>${esc(memberName(j.reviewerId))}</td>
       <td>${stagePill(j.stage)}</td><td>${hrs(jobHours(j))}</td>
       <td><div class="acts">${jobActionsHtml(j)}${canEditJob(j) && j.stage !== "done" ? `<button class="btn" data-job-sched="${esc(j.id)}">+ Schedule work</button>` : ""}</div></td></tr>`;
-  }).join("") || `<tr><td colspan="8" class="empty">${vis.length ? `No jobs match these filters. <button class="linkbtn" data-clear-all="j">Clear filters</button>` : "No client jobs yet — add one to track filings, deadlines and reviews."}</td></tr>`);
+  }).join("") || `<tr><td colspan="9" class="empty">${vis.length ? `No jobs match these filters. <button class="linkbtn" data-clear-all="j">Clear filters</button>` : "No client jobs yet — add one to track filings, deadlines and reviews."}</td></tr>`);
   $("#jobTable").insertAdjacentHTML("beforebegin", ""); const cnt = $("#jobCount"); if (cnt) cnt.textContent = `Showing ${rows.length} of ${vis.length} job${vis.length===1?"":"s"}${nAct ? ` · ${nAct} filter${nAct>1?"s":""} on` : ""}`;
 }
 
@@ -1574,6 +1598,7 @@ function openJob(j, preset = {}){
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
   $("#clientList").innerHTML = [...new Set(state.allJobs.map(x => x.client).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">`).join("");
   $("#jobTitle").textContent = j ? (canEd ? "Edit client job" : "Client job") : "New client job";
+  $("#jobTicket").style.display = ""; $("#jobTicket").innerHTML = j?.ticket ? `🎫 Ticket no. <b>${esc(j.ticket)}</b>` : `🎫 Ticket no. <span class="muted">will be given automatically when you save</span>`;
   $("#delJob").style.display = j && canEd ? "" : "none";
   f.querySelector("[type=submit]").style.display = canEd ? "" : "none";
   f.querySelectorAll("input,select,textarea,button.linkbtn").forEach(el => el.disabled = !canEd);
@@ -1992,7 +2017,7 @@ function timesheetData(){
     days: days.map((ds, k) => {
       const list = mine.filter(i => i.date === ds).sort((a, b) => mins(a.start) - mins(b.start));
       const rows = list.map(i => { const j = jobById(i.jobId);
-        return { start: i.start, end: i.end, client: j ? j.client : i.category === "leave" ? (i.title || "Leave") : "", desc: i.category === "leave" ? "" : (i.title || (j ? j.type : "")) }; });
+        return { start: i.start, end: i.end, client: j ? j.client : i.category === "leave" ? (i.title || "Leave") : "", desc: i.category === "leave" ? "" : (i.title || (j ? j.type : "")) + (j && j.ticket ? ` [${j.ticket}]` : "") }; });
       const fullLeave = list.some(i => i.category === "leave" && mins(i.end) - mins(i.start) >= 6 * 60);
       const lunchTaken = list.some(i => mins(i.start) < 14 * 60 && mins(i.end) > 13 * 60);
       if (k < 5 && !fullLeave && !lunchTaken) {
@@ -2066,14 +2091,14 @@ async function exportJobs(due){
   const list = filteredJobs().filter(j => !due || (j.dueDate && j.dueDate >= due[0] && j.dueDate <= due[1]));
   if (!list.length) { toast(due ? "No jobs are due between those dates" : "No jobs match the current filter"); return; }
   const today = ymd(new Date());
-  const head = ["Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Filed / done on","Notes"];
+  const head = ["Ticket no.","Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Filed / done on","Notes"];
   const rows = [head];
   list.forEach(j => { const d = dueInfo(j); const tasks = state.items.filter(i => i.jobId === j.id);
     const st = j.stage === "done" ? "Filed" : !j.dueDate ? "" : d.days < 0 ? "Overdue" : d.days === 0 ? "Due today" : d.days <= 7 ? "Due within 7 days" : "On track";
-    rows.push([j.client, j.type, j.ya || "", j.refDate ? xlDate(j.refDate) : "", j.dueDate ? xlDate(j.dueDate) : "", j.stage === "done" || !j.dueDate ? "" : d.days, st, STAGES[j.stage] || STAGES.todo, memberName(j.preparerId), memberName(j.reviewerId), round1(jobHours(j) / 60), tasks.length, j.doneAt ? xlDate(j.doneAt) : "", j.notes || ""]); });
-  const work = [["Client","Filing","Date","Day","Start","End","Hours","Team member","Task","Status"]];
+    rows.push([j.ticket || "", j.client, j.type, j.ya || "", j.refDate ? xlDate(j.refDate) : "", j.dueDate ? xlDate(j.dueDate) : "", j.stage === "done" || !j.dueDate ? "" : d.days, st, STAGES[j.stage] || STAGES.todo, memberName(j.preparerId), memberName(j.reviewerId), round1(jobHours(j) / 60), tasks.length, j.doneAt ? xlDate(j.doneAt) : "", j.notes || ""]); });
+  const work = [["Ticket no.","Client","Filing","Date","Day","Start","End","Hours","Team member","Task","Status"]];
   list.forEach(j => state.items.filter(i => i.jobId === j.id).sort((a,b) => (a.date + a.start).localeCompare(b.date + b.start))
-    .forEach(i => work.push([j.client, j.type, xlDate(i.date), dayName(i.date), i.start, i.end, round1(dur(i)/60), memberName(i.memberId), i.title, STATUS[i.status] || i.status])));
+    .forEach(i => work.push([j.ticket || "", j.client, j.type, xlDate(i.date), dayName(i.date), i.start, i.end, round1(dur(i)/60), memberName(i.memberId), i.title, STATUS[i.status] || i.status])));
   // summary by stage and by person
   const sum = [["Stage","Jobs"]]; Object.entries(STAGES).forEach(([k, v]) => sum.push([v, list.filter(j => (j.stage || "todo") === k).length]));
   sum.push([], ["Due status","Jobs"], ["Overdue", list.filter(j => j.stage !== "done" && j.dueDate && j.dueDate < today).length], ["Due within 7 days", list.filter(j => j.stage !== "done" && j.dueDate >= today && dueInfo(j).days <= 7).length]);
@@ -2082,8 +2107,8 @@ async function exportJobs(due){
   ppl.forEach(id => sum.push([memberName(id), list.filter(j => j.preparerId === id && j.stage !== "done").length, list.filter(j => j.reviewerId === id && j.stage !== "done").length, list.filter(j => j.preparerId === id && j.stage === "done").length]));
   const f = filterSummary("j");
   await saveWorkbook(due ? `Client jobs due ${due[0]} to ${due[1]}.xlsx` : `Client jobs ${today}.xlsx`, [
-    { name: "Client jobs", rows, cols: [28,18,6,14,12,9,16,16,18,18,10,7,12,40], dateCols: [3,4,12], numCols: [10] },
-    { name: "Scheduled work", rows: work, cols: [28,18,12,6,7,7,7,18,36,12], dateCols: [2], numCols: [6] },
+    { name: "Client jobs", rows, cols: [14,28,18,6,14,12,9,16,16,18,18,10,7,12,40], dateCols: [4,5,13], numCols: [11] },
+    { name: "Scheduled work", rows: work, cols: [14,28,18,12,6,7,7,7,18,36,12], dateCols: [3], numCols: [7] },
     { name: "Summary", rows: sum, cols: [22,16,16,10], filter: false },
     { name: "About", rows: [["CCTeamSync — client jobs export"], ["Filter", f || "All"], ["Due dates", due ? `${niceDate(due[0])} – ${niceDate(due[1])}` : "All"], ["Jobs", list.length], ["Exported", new Date().toLocaleString("en-GB")], ["Exported by", meMember()?.name || (state.isOwner ? "Administrator" : "")], ["Note", "Due dates suggested by the app follow LHDN rules; verify against the latest filing programme."]], cols: [14, 60], filter: false },
   ]);
@@ -2200,6 +2225,8 @@ function renderSignInCard(){
   const noLogin = state.allMembers.filter(m => !m.private && !m.uid && m.userId);
   el.innerHTML = `<div class="hd"><h3>Sign-in &amp; passwords</h3></div><div class="bd">
     ${pendingCard()}
+    ${state.isOwner ? `<div class="card" style="padding:12px 14px;margin-bottom:12px;box-shadow:none;background:var(--soft)"><b>Default rights by role</b> <span class="muted" style="font-size:12px">— applied automatically when you approve someone or change their role. You can still change any one person's rights in the table below.</span>
+      <div class="rolerights">${ROLES.slice(1).map(([v, l]) => `<label>${l}<select class="f" data-roleright="${v}">${rightOptions(roleRights()[v])}</select></label>`).join("")}</div></div>` : ""}
     ${reqs.length ? `<div class="nudge" style="margin-bottom:12px"><b>${reqs.length} password reset request${reqs.length>1?"s":""}</b>${reqs.map(m => `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${esc(m.name)} (${esc(m.userId || "no email")}) · ${esc(new Date(m.resetRequested).toLocaleString(undefined,{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}))} <button class="btn" data-adm-temp="${esc(m.id)}">Issue temporary password</button></div>`).join("")}</div>` : ""}
     <div class="signin-grid">
       <div><div class="k-l">How sign-in works</div>
@@ -2221,6 +2248,7 @@ function pendingCard(){
     ${list.map(m => `<div class="reqrow">
       <div class="who">${avatar(m)}<div><div><b style="display:inline">${esc(m.name)}</b> <span class="muted">${esc(m.role || "")}</span></div><div class="muted" style="font-size:12px">${esc(m.userId || "")} · ${m.requestedAt ? esc(new Date(m.requestedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : ""}</div></div></div>
       <select class="f" data-req-role="${esc(m.id)}">${roleOptions("associate")}</select>
+      <select class="f" data-req-rights="${esc(m.id)}">${rightOptions(roleRights().associate)}</select>
       <select class="f" data-req-mgr="${esc(m.id)}"><option value="">Reports to…</option>${sups.map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(roleLabel(normAccess(x.access)))}</option>`).join("")}</select>
       <button class="btn primary" data-req-ok="${esc(m.id)}">Approve</button><button class="btn danger" data-req-no="${esc(m.id)}">Reject</button></div>`).join("")}
     <div class="muted" style="font-size:12px;margin-top:6px">You can also approve in Supabase: Table Editor → <code>access_requests</code> → tick <span style="font-weight:800">approved</span> → Save.</div></div>`;
@@ -2235,7 +2263,8 @@ async function decideRequest(id, ok){
       if (access === "hod") managerId = null;
       const mg = managerId && state.allMembers.find(x => x.id === managerId);
       if (mg && rank(normAccess(mg.access)) >= rank(access)) return toast(`${mg.name} must rank above ${roleLabel(access)}`);
-      const { error: e1 } = await sb.from("members").update({ data: { ...clean(m), access, managerId } }).eq("id", id); if (e1) throw e1;
+      const rights = document.querySelector(`[data-req-rights="${CSS.escape(id)}"]`)?.value || roleRights()[access] || "edit";
+      const { error: e1 } = await sb.from("members").update({ data: { ...clean(m), access, managerId, ...rightPatch(rights) } }).eq("id", id); if (e1) throw e1;
     }
     const { error } = await sb.from("access_requests").update(ok ? { approved: true } : { rejected: true }).eq("member_id", id).eq("approved", false).eq("rejected", false);
     if (error) throw error;
@@ -2273,7 +2302,7 @@ function renderAdmin(){
       <td><div class="who">${avatar(m)}<div>${esc(m.name)}<div class="muted" style="font-size:12px">${esc(m.role||"—")}${nReports ? ` · ${nReports} report${nReports===1?"":"s"}` : ""}</div></div></div></td>
       <td><select data-adm="access" data-id="${esc(m.id)}">${roleOptions(m.access)}</select></td>
       <td><select data-adm="managerId" data-id="${esc(m.id)}" ${isHod ? `disabled title="Head of Division is the top level and reports to no one"` : ""}>${mgrOpts}</select>${!isHod && !m.managerId ? `<div class="loantag" style="color:var(--warn,#b45309)">No manager assigned</div>` : ""}${activeLoans(m).map(l => `<div class="loantag">On loan to ${esc(memberName(l.managerId))} until ${esc(parse(l.to).toLocaleDateString(undefined,{day:"numeric",month:"short"}))}</div>`).join("")}</td>
-      <td><select data-adm="canEdit" data-id="${esc(m.id)}"><option value="1">Can edit</option><option value="0" ${m.canEdit===false?"selected":""}>View only</option></select></td>
+      <td><select data-adm="rights" data-id="${esc(m.id)}">${rightOptions(rightOf(m))}</select></td>
       <td><select data-adm="seeTeam" data-id="${esc(m.id)}" ${isMgmt(normAccess(m.access))?`disabled title="Management roles see everyone below them"`:""}><option value="1">Own + team</option><option value="0" ${m.seeTeam===false?"selected":""}>Own only</option></select></td>
       <td>${m.userId ? `<code>${esc(m.userId)}</code>` : `<span class="muted">No email yet</span>`}<div style="margin-top:3px">${pwStatus(m)}</div></td>
       <td>${m.uid ? '<span class="pill st-done">Can sign in</span>' : '<span class="muted">No login</span>'}</td>
@@ -2284,7 +2313,7 @@ function renderAdmin(){
   $("#admBulk").innerHTML = n ? `<b>${n} selected</b>
     <select class="f" data-adm-bulk="access"><option value="">Set role…</option>${roleOptions("__none")}</select>
     <select class="f" data-adm-bulk="managerId"><option value="__">Reports to…</option><option value="">— Not assigned</option>${shared.filter(x => rank(normAccess(x.access)) < 5).sort((a,b) => rank(normAccess(a.access)) - rank(normAccess(b.access))).map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(roleLabel(normAccess(x.access)))}</option>`).join("")}</select>
-    <select class="f" data-adm-bulk="canEdit"><option value="">Rights…</option><option value="1">Can edit</option><option value="0">View only</option></select>
+    <select class="f" data-adm-bulk="rights"><option value="">Rights…</option>${rightOptions("")}</select>
     <button class="btn" data-adm-bulkreset>Reset role</button><button class="btn" data-adm-bulkunlink>Remove logins</button><button class="btn danger" data-adm-bulkremove>Remove</button>
     <button class="linkbtn" data-adm-clear style="margin-left:auto">Clear selection</button>` : "";
 }
@@ -2339,7 +2368,7 @@ function reportsWarning(ids, newAccess){
     toast(list.length > 1 ? `${list.length} users removed` : `${list[0].name} removed`);
   } catch(_) {}
 }
-const RESET = { access: "associate", canEdit: true, seeTeam: true };
+const RESET = { access: "associate", canEdit: true, isAdmin: false, seeTeam: true };
 
 async function restoreEntry(id){
   const e = state.log.find(x => x.id === id); if (!e || !e.before) return;
@@ -2481,7 +2510,10 @@ function openMember(m){
   f.managerId.innerHTML = "";
   const fillSup = () => { const hod = f.access.value === "hod"; const list = hod ? [] : supervisorsFor(m, f.access.value); const keep = f.managerId.value || m?.managerId;
     f.managerId.innerHTML = supOptions(list, keep, f.access.value); f.managerId.value = list.some(x => x.id === keep) ? keep : ""; f.managerId.disabled = hod; };
-  fillSup(); f.access.onchange = fillSup;
+  f.rights.innerHTML = rightOptions(m ? rightOf(m) : roleRights()[f.access.value] || "edit");
+  fillSup(); f.access.onchange = () => { fillSup(); f.rights.value = roleRights()[f.access.value] || "edit"; };
+  const pend = !!m?.pending; $("#memPending").style.display = pend ? "" : "none"; $("#memReject").style.display = pend ? "" : "none";
+  $("#memSave").textContent = pend ? "Save & approve" : "Save"; $("#privWrap").style.display = pend || (state.isOwner && !state.isMain) ? "none" : "";
   const syncPriv = () => { $("#accessWrap").style.display = f.priv.checked ? "none" : ""; $("#linkWrap").style.display = "none"; };
   f.priv.onchange = syncPriv; syncPriv();
   resolveNames(m?.uid ? [m.uid] : []);
@@ -2491,7 +2523,7 @@ function openMember(m){
   pickedColor = m?.color || COLORS.find(c => !used.has(c)) || COLORS[state.members.length % COLORS.length];
   drawColors();
   $("#memTitle").textContent = m ? "Edit member" : "Add member";
-  $("#delMem").style.display = m ? "" : "none"; $("#memErr").textContent = "";
+  $("#delMem").style.display = m && !m.pending ? "" : "none"; $("#memErr").textContent = "";
   $("#memScrim").classList.add("on"); setTimeout(() => f.name.focus(), 30);
 }
 function drawColors(){ $("#colorpick").innerHTML = COLORS.map(c => `<button type="button" data-c="${c}" class="${c===pickedColor?"on":""}" style="background:${c}" aria-label="colour ${c}"></button>`).join(""); }
@@ -2505,18 +2537,23 @@ $("#memForm").addEventListener("submit", async e => {
   const data = { name: f.name.value.trim(), role: f.role.value.trim(), workStart: f.workStart.value || "09:00", workEnd: f.workEnd.value || "18:00", color: pickedColor,
     order: editingMember?.order ?? (priv ? -1 : Math.max(0, ...state.allMembers.map(m=>m.order||0)) + 1),
     access: priv ? "director" : f.access.value, managerId: (priv || f.access.value === "hod") ? null : (f.managerId.value || null), uid: priv ? null : (editingMember?.uid || null), private: priv,
-    canEdit: editingMember?.canEdit !== false, seeTeam: editingMember?.seeTeam !== false, userId: userId || null };
+    ...(priv ? { canEdit: true, isAdmin: false } : rightPatch(f.rights.value)), seeTeam: editingMember?.seeTeam !== false, userId: userId || null };
   if (!data.name) return $("#memErr").textContent = "Enter a name.";
   if (mins(data.workEnd) <= mins(data.workStart)) return $("#memErr").textContent = "Working hours end must be after start.";
   if (editingMember?.demo) data.demo = true;
   const id = editingMember?.id || uid();
-  if (editingMember) ["mustChange","tempExp","pwSet","resetRequested","revokedAt","loans"].forEach(k => { if (editingMember[k] !== undefined) data[k] = editingMember[k]; });
+  if (editingMember) ["mustChange","tempExp","pwSet","resetRequested","revokedAt","loans","pending","requestedAt"].forEach(k => { if (editingMember[k] !== undefined) data[k] = editingMember[k]; });
   if (editingMember?.uid && normId(editingMember.userId) !== userId) {
     if (!userId) return $("#memErr").textContent = "This person has a login, so they need an email address.";
     try { await adminCall({ action: "rename", memberId: id, userId }); } catch (err) { return $("#memErr").textContent = err.message; }
   }
   try {
     const wasPriv = !!editingMember?.private;
+    if (editingMember?.pending) {
+      const { error: e1 } = await sb.from("members").update({ data }).eq("id", id); if (e1) throw e1;
+      const { error: e2 } = await sb.from("access_requests").update({ approved: true }).eq("member_id", id).eq("approved", false).eq("rejected", false); if (e2) throw e2;
+      $("#memScrim").classList.remove("on"); toast(`${data.name} approved — they can sign in now`); queueReload("members"); return;
+    }
     await commit("members", id, data);
     if (editingMember && wasPriv !== priv) {   // move their tasks to match the new privacy setting
       for (const i of state.allItems.filter(i => i.memberId === id)) { const { id: iid, _priv, ...rest } = i; await save("items", iid, rest, priv); await remove("items", iid, wasPriv); }
@@ -2524,6 +2561,7 @@ $("#memForm").addEventListener("submit", async e => {
     $("#memScrim").classList.remove("on"); toast(editingMember ? "Member updated" : `${data.name} added`);
   } catch(_) {}
 });
+$("#memReject").addEventListener("click", async () => { const m = editingMember; if (!m) return; $("#memScrim").classList.remove("on"); await decideRequest(m.id, false); });
 $("#delMem").addEventListener("click", async () => {
   const m = editingMember; if (!m) return;
   const theirs = state.allItems.filter(i => i.memberId === m.id);
@@ -2635,7 +2673,7 @@ document.addEventListener("change", e => {
   const t = e.target;
   if (t.matches("[data-adm]")) {
     const id = t.dataset.id, f = t.dataset.adm, v = t.value;
-    const patch = f === "access" ? { access: v } : f === "managerId" ? { managerId: v || null } : f === "canEdit" ? { canEdit: v === "1" } : { seeTeam: v === "1" };
+    const patch = f === "access" ? { access: v, ...rightPatch(roleRights()[v] || "edit") } : f === "managerId" ? { managerId: v || null } : f === "rights" ? rightPatch(v) : { seeTeam: v === "1" };
     const m = state.allMembers.find(x => x.id === id);
     const warn = f === "access" ? reportsWarning([id], v) : "";
     admApply([id], () => patch, warn ? { confirmText: { title: `Change ${m.name} to ${roleLabel(v)}?`, text: `Some of their reports would no longer rank below them.${warn}` }, yes: "Change" } : {});
@@ -2644,12 +2682,17 @@ document.addEventListener("change", e => {
     const q = $("#admQ").value.trim().toLowerCase();
     state.allMembers.filter(m => !m.private && (!q || [m.name, m.role, state.names[m.uid]].join(" ").toLowerCase().includes(q))).forEach(m => t.checked ? admSel.add(m.id) : admSel.delete(m.id));
     render();
+  } else if (t.matches("[data-roleright]")) {
+    const next = { ...roleRights(), [t.dataset.roleright]: t.value };
+    sb.from("config").upsert({ id: "roleRights", data: next }).then(({ error }) => { if (error) return toast("Couldn't save: " + error.message); state.roleRights = next; toast(`${roleLabel(t.dataset.roleright)} → ${Object.fromEntries(RIGHTS)[t.value]}`); });
+  } else if (t.matches("[data-req-role]")) {
+    const r = document.querySelector(`[data-req-rights="${CSS.escape(t.dataset.reqRole)}"]`); if (r) r.value = roleRights()[t.value] || "edit";
   } else if (t.matches("[data-adm-bulk]")) {
     const f = t.dataset.admBulk, v = t.value;
     if ((f !== "managerId" && v === "") || (f === "managerId" && v === "__")) return;
     const ids = [...admSel];
-    const patch = f === "access" ? { access: v } : f === "managerId" ? { managerId: v || null } : { canEdit: v === "1" };
-    const label = f === "access" ? roleLabel(v) : f === "managerId" ? (v ? `reports to ${state.allMembers.find(m => m.id === v)?.name}` : "no manager assigned") : (v === "1" ? "Can edit" : "View only");
+    const patch = f === "access" ? { access: v, ...rightPatch(roleRights()[v] || "edit") } : f === "managerId" ? { managerId: v || null } : rightPatch(v);
+    const label = f === "access" ? roleLabel(v) : f === "managerId" ? (v ? `reports to ${state.allMembers.find(m => m.id === v)?.name}` : "no manager assigned") : Object.fromEntries(RIGHTS)[v];
     admApply(ids, () => ({ ...patch }), { confirmText: { title: `Update ${ids.length} user${ids.length>1?"s":""}?`, text: `Set ${ids.length > 1 ? "them" : "this user"} to: ${label}.${f === "access" ? reportsWarning(ids, v) : ""}` }, yes: "Apply" });
   }
 });
@@ -2685,7 +2728,9 @@ document.addEventListener("click", e => {
   if (!t.closest("#acct")) $("#acct").classList.remove("open");
   if (t.closest("[data-signout]")) { $("#acct").classList.remove("open"); signOut(); return; }
   if (t.closest("[data-my-pw]")) { $("#acct").classList.remove("open"); state.forced = false; showAuth("setpw"); return; }
-  const rq = t.closest("[data-req-ok],[data-req-no]"); if (rq) { decideRequest(rq.dataset.reqOk || rq.dataset.reqNo, !!rq.dataset.reqOk); return; }
+  const pe = t.closest("[data-pend-edit]"); if (pe) { openMember((state.pendingMembers || []).find(x => x.id === pe.dataset.pendEdit)); return; }
+  const rq = t.closest("[data-req-ok],[data-req-no]");
+ if (rq) { decideRequest(rq.dataset.reqOk || rq.dataset.reqNo, !!rq.dataset.reqOk); return; }
   const au2 = t.closest("[data-auth]"); if (au2) { const v = au2.dataset.auth; showAuth(v); if (v === "forgot") { $("#forgotOwner").style.display = state.isOwner ? "" : "none"; $("#forgotUser").style.display = state.isOwner ? "none" : ""; } return; }
   if (t.closest("[data-auth-cancel]")) { if (needLogin()) showAuth("login"); else hideAuth(); return; }
   if (t.closest("[data-signout]") && !t.closest("#acct")) { signOut(); return; }
