@@ -352,6 +352,7 @@ input.txt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;backgr
 .tsp table.os{table-layout:fixed}.tsp table.os td{vertical-align:top;overflow-wrap:anywhere}.tsp table.os .sub{color:#6b7280;font-size:10.5px}
 .tsp table.os tr.lv3 td{background:#fde2e4}.tsp table.os tr.lv3 td.st{color:#c81e3a;font-weight:700}.tsp table.os tr.lv2 td{background:#fff4dc}
 .tsp table.os th.grp{background:#ecfdf5;color:#0f766e}.tsp .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;white-space:nowrap}
+.ms-team{display:flex;gap:6px;align-items:center;padding:6px 10px;border-top:1px dashed var(--line);font-size:12.5px;font-weight:700;color:var(--accent)}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -829,7 +830,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
     <div class="hd"><h3>📋 Outstanding listing</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
       <div class="row2" style="grid-template-columns:1.2fr 1fr 1fr 1fr;align-items:end">
-        <label class="fl">Staff<select id="osWho"></select></label>
+        <label class="fl">Staff<select id="osWho"></select><span class="chk" style="font-weight:600;margin-top:4px"><input type="checkbox" id="osTeam" checked> Include the people under them</span></label>
         <label class="fl">Show<select id="osWhat"><option value="both">Jobs and tasks</option><option value="jobs">Outstanding jobs only</option><option value="tasks">Outstanding tasks only</option></select></label>
         <label class="fl">Jobs due up to<input type="date" id="osUpTo"></label>
         <label class="fl">Group by<select id="osGroup"><option value="none">Due date</option><option value="prep">Preparer</option><option value="type">Job type</option></select></label>
@@ -1137,7 +1138,7 @@ function pickDefaultView(){
 // ---------- selectors ----------
 const memberById = id => state.members.find(m => m.id === id);
 const sortedMembers = () => [...state.members].sort((a,b) => (a.order??0)-(b.order??0) || String(a.name).localeCompare(b.name));
-const visibleMembers = () => sortedMembers().filter(m => !F.people.length || F.people.includes(m.id));
+const visibleMembers = () => { const ps = peopleSet(); return sortedMembers().filter(m => !ps || ps.has(m.id)); };
 const itemsOn = ds => state.items.filter(i => i.date === ds && memberById(i.memberId) && itemMatches(i))
   .sort((a,b) => mins(a.start)-mins(b.start));
 const dur = i => Math.max(0, mins(i.end) - mins(i.start));
@@ -1675,7 +1676,20 @@ function logCsv(){
 }
 
 // ---------- Multi-select filters & search ----------
-const F = { people: [], status: [], type: [], job: [], q: "" };                          // schedule views
+const F = { people: [], status: [], type: [], job: [], q: "", team: true };
+// People filter: picking someone also shows everyone under them in the reporting line (if "include their team" is on)
+function teamOf(id){ return new Set([id, ...treeBelow(id)]); }
+function peopleSet(){ if (!F.people.length) return null; const out = new Set(); F.people.forEach(id => (F.team ? teamOf(id) : new Set([id])).forEach(x => out.add(x))); return out; }
+// people listed in reporting-line order, indented under their manager
+function memberTreeOptions(list){
+  const ids = new Set(list.map(m => m.id)); const kids = {}; const roots = [];
+  list.forEach(m => { const p = m.managerId && ids.has(m.managerId) ? m.managerId : null; (p ? (kids[p] = kids[p] || []) : roots).push(m); });
+  const byRank = (a, b) => (b.private ? 1 : 0) - (a.private ? 1 : 0) || rank(normAccess(a.access)) - rank(normAccess(b.access)) || String(a.name).localeCompare(b.name);
+  const out = []; const walk = (m, d) => { const n = treeBelow(m.id).size;
+    out.push([m.id, `${"\u2003".repeat(d)}${d ? "└ " : ""}${m.private ? "My schedule" : m.name}${m.private ? "" : " · " + roleLabel(normAccess(m.access))}${n ? ` (+${n})` : ""}`]);
+    (kids[m.id] || []).sort(byRank).forEach(k => walk(k, d + 1)); };
+  roots.sort(byRank).forEach(m => walk(m, 0)); return out;
+}                          // schedule views
 const JF = { stage: ["todo","prep","review","changes"], type: [], client: [], prep: [], rev: [], due: [], ya: [], q: "" }; // client jobs
 const JF_DEFAULT_STAGE = ["todo","prep","review","changes"];
 try { const sv = JSON.parse(localStorage.getItem("ts-filters") || "{}"); if (sv.F) Object.assign(F, sv.F); if (sv.JF) Object.assign(JF, sv.JF); } catch(_) {}
@@ -1688,7 +1702,7 @@ const inDue = (j, sel) => !sel.length || sel.some(s => { const b = dueBucket(j);
 // option lists
 function schedOptions(){
   return {
-    people: sortedMembers().map(m => [m.id, m.private ? "My schedule" : m.name]),
+    people: memberTreeOptions(sortedMembers()),
     status: Object.entries(STATUS).concat([["leave","On leave"]]),
     type: [["work","Work"],["meeting","Meeting"],["leave","Leave / off"],["other","Other"]],
     job: [["__none","Not linked to a job"]].concat(state.jobs.slice().sort((a,b) => String(a.client).localeCompare(String(b.client))).map(j => [j.id, jobLabel(j)])),
@@ -1709,18 +1723,19 @@ const JOB_LABELS = { stage: "Stage", due: "Due", type: "Filing", client: "Client
 
 function msHtml(scope, key, label, options, sel){
   const n = sel.length, many = options.length > 8;
-  const summary = n === 0 ? "" : n === 1 ? (options.find(o => o[0] === sel[0])?.[1] || "1") : `${n}`;
+  const summary = n === 0 ? "" : n === 1 ? String(options.find(o => o[0] === sel[0])?.[1] || "1").replace(/^[\u2003└ ]+/, "").replace(/ · .*$/, "") : `${n}`;
   return `<div class="ms ${openMs === scope + ":" + key ? "open" : ""}" data-ms="${scope}:${key}">
     <button type="button" class="ms-btn ${n ? "on" : ""}" data-ms-toggle="${scope}:${key}">${esc(label)}${n ? `: <b>${esc(summary.length > 18 ? summary.slice(0,17) + "…" : summary)}</b>` : ""} <span class="caret">▾</span></button>
     <div class="ms-pop">${many ? `<input class="ms-find" placeholder="Find ${esc(label.toLowerCase())}…" data-ms-find>` : ""}
       <div class="ms-list">${options.map(([v, t]) => `<label class="ms-opt"><input type="checkbox" data-ms-opt="${scope}:${key}" value="${esc(v)}" ${sel.includes(v) ? "checked" : ""}><span>${esc(t)}</span></label>`).join("") || `<div class="muted" style="padding:8px">Nothing to filter yet</div>`}</div>
+      ${scope === "s" && key === "people" ? `<label class="ms-team"><input type="checkbox" data-ms-team ${F.team ? "checked" : ""}> Include the people under them</label>` : ""}
       <div class="ms-foot"><button type="button" class="linkbtn" data-ms-all="${scope}:${key}">Select all</button><button type="button" class="linkbtn" data-ms-none="${scope}:${key}">Clear</button></div>
     </div></div>`;
 }
 function chipsHtml(scope, obj, labels, opts){
   const chips = [];
   Object.keys(labels).forEach(k => { const sel = obj[k]; if (!sel?.length) return; if (scope === "j" && k === "stage" && sameSet(sel, JF_DEFAULT_STAGE)) return;
-    const names = sel.map(v => opts[k]?.find(o => o[0] === v)?.[1] || v);
+    const names = sel.map(v => String(opts[k]?.find(o => o[0] === v)?.[1] || v).replace(/^[\u2003└ ]+/, "").replace(/ · .*$/, "").replace(/ \(\+\d+\)$/, "") + (scope === "s" && k === "people" && F.team && treeBelow(v).size ? " + team" : ""));
     chips.push(`<span class="fchip">${esc(labels[k])}: ${esc(names.length > 3 ? names.slice(0,3).join(", ") + ` +${names.length-3}` : names.join(", "))}<button type="button" data-chip-x="${scope}:${k}" aria-label="Remove filter">×</button></span>`); });
   if (obj.q) chips.push(`<span class="fchip">Search: “${esc(obj.q)}”<button type="button" data-chip-x="${scope}:q" aria-label="Clear search">×</button></span>`);
   return chips.length ? chips.join("") + `<button type="button" class="linkbtn" data-clear-all="${scope}">Clear all</button>` : "";
@@ -1750,7 +1765,7 @@ function countActive(scope){
 }
 // the predicates the views use
 function itemMatches(i){
-  if (F.people.length && !F.people.includes(i.memberId)) return false;
+  const ps = peopleSet(); if (ps && !ps.has(i.memberId)) return false;
   if (F.type.length && !F.type.includes(i.category)) return false;
   if (F.status.length) { const st = i.category === "leave" ? "leave" : i.status; if (!F.status.includes(st)) return false; }
   if (F.job.length) { const k = i.jobId && jobById(i.jobId) ? i.jobId : "__none"; if (!F.job.includes(k)) return false; }
@@ -1758,7 +1773,7 @@ function itemMatches(i){
   return true;
 }
 function jobMatchesSched(j){
-  if (F.people.length && !F.people.includes(j.preparerId) && !F.people.includes(j.reviewerId)) return false;
+  const ps = peopleSet(); if (ps && !ps.has(j.preparerId) && !ps.has(j.reviewerId)) return false;
   if (F.job.length && !F.job.includes(j.id)) return false;
   if (F.q) { const hay = [j.client, j.type, j.notes, memberName(j.preparerId), memberName(j.reviewerId)].join(" ").toLowerCase(); if (!F.q.toLowerCase().split(/\s+/).every(w => hay.includes(w))) return false; }
   return true;
@@ -2024,21 +2039,22 @@ async function loadJsPDF(){ if (!window.jspdf) await loadScript(JSPDF_URL); if (
 function openOutstanding(){
   const me = meMember();
   const ms = sortedMembers();
-  $("#osWho").innerHTML = `<option value="">Everyone I can see</option>` + ms.map(m => `<option value="${esc(m.id)}">${esc(m.private ? "Administrator (you)" : m.name)}</option>`).join("");
+  $("#osWho").innerHTML = `<option value="">Everyone I can see</option>` + memberTreeOptions(ms).map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
   if (!isManagerish() && me) $("#osWho").value = me.id;
   $("#osUpTo").value = ""; $("#osErr").textContent = ""; syncOs(); $("#osScrim").classList.add("on");
 }
 function osData(){
   const who = $("#osWho").value, what = $("#osWhat").value, upTo = $("#osUpTo").value, group = $("#osGroup").value;
+  const set = who ? ($("#osTeam").checked ? teamOf(who) : new Set([who])) : null; const inSet = id => !set || set.has(id);
   const today = ymd(new Date());
-  const jobs = what === "tasks" ? [] : state.jobs.filter(j => j.stage !== "done" && (!who || j.preparerId === who || j.reviewerId === who) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
+  const jobs = what === "tasks" ? [] : state.jobs.filter(j => j.stage !== "done" && (inSet(j.preparerId) || inSet(j.reviewerId)) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
     .map(j => { const d = dueInfo(j); const days = j.dueDate ? d.days : null;
       return { ticket: j.ticket || "", client: j.client || "", type: j.type || "", ya: j.ya || "", due: j.dueDate || "", days,
         status: !j.dueDate ? "No due date" : days < 0 ? `Overdue ${-days} day${days === -1 ? "" : "s"}` : days === 0 ? "Due today" : days <= 7 ? `Due in ${days} day${days === 1 ? "" : "s"}` : `${days} days left`,
         level: !j.dueDate ? 0 : days <= 0 ? 3 : days <= 7 ? 2 : 1,
         stage: STAGES[j.stage] || STAGES.todo, prep: memberName(j.preparerId) || "—", rev: memberName(j.reviewerId) || "—", hours: round1(jobHours(j) / 60), notes: j.notes || "" }; })
     .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.client.localeCompare(b.client));
-  const tasks = what === "jobs" ? [] : state.items.filter(i => i.category !== "leave" && i.category !== "meeting" && i.status !== "done" && i.date <= today && (!who || i.memberId === who))
+  const tasks = what === "jobs" ? [] : state.items.filter(i => i.category !== "leave" && i.category !== "meeting" && i.status !== "done" && i.date <= today && inSet(i.memberId))
     .map(i => { const j = jobById(i.jobId); const age = Math.round((parse(today) - parse(i.date)) / 864e5);
       return { date: i.date, age, staff: memberName(i.memberId), task: i.title || "", client: j ? j.client : "", ticket: j?.ticket || "", status: STATUS[i.status] || i.status, notes: i.notes || "" }; })
     .sort((a, b) => a.date.localeCompare(b.date) || a.staff.localeCompare(b.staff));
@@ -2046,7 +2062,7 @@ function osData(){
   if (group === "none") groups.push({ title: "", rows: jobs });
   else { const key = group === "prep" ? "prep" : "type"; const names = [...new Set(jobs.map(r => r[key]))].sort((a, b) => a.localeCompare(b));
     names.forEach(n => groups.push({ title: (group === "prep" ? "Preparer: " : "Job type: ") + n, rows: jobs.filter(r => r[key] === n) })); }
-  const whoName = who ? (memberById(who)?.private ? "Administrator" : memberName(who)) : "All staff";
+  const whoName = who ? (memberById(who)?.private ? "Administrator" : memberName(who)) + ($("#osTeam").checked && treeBelow(who).size ? " and team" : "") : "All staff";
   return { who: whoName, today, upTo, jobs, groups, tasks, what,
     counts: { open: jobs.length, overdue: jobs.filter(r => r.days !== null && r.days < 0).length, week: jobs.filter(r => r.days !== null && r.days >= 0 && r.days <= 7).length, review: jobs.filter(r => r.stage === STAGES.review).length, tasks: tasks.length } };
 }
@@ -2775,6 +2791,7 @@ document.addEventListener("click", e => {
   if (openMs && !t.closest(".ms")) { openMs = null; document.querySelectorAll(".ms.open").forEach(m => m.classList.remove("open")); }
 }, true);
 document.addEventListener("change", e => {
+  if (e.target.matches("[data-ms-team]")) { F.team = e.target.checked; render(); return; }
   const t = e.target; if (!t.matches("[data-ms-opt]")) return;
   const [scope, k] = t.dataset.msOpt.split(":"); const arr = fObj(scope)[k];
   fObj(scope)[k] = t.checked ? [...new Set([...arr, t.value])] : arr.filter(v => v !== t.value);
@@ -2873,7 +2890,7 @@ const step = dir => { const d = new Date(state.date);
   state.date = d; render(); };
 ["xpFrom","xpTo","xpAll"].forEach(id => $("#" + id).addEventListener("change", () => { if (id !== "xpAll") $("#xpAll").checked = false; syncXp(); }));
 ["tsWho","tsWeek"].forEach(id => $("#" + id).addEventListener("change", syncTs));
-["osWho","osWhat","osUpTo","osGroup"].forEach(id => $("#" + id).addEventListener("change", syncOs));
+["osWho","osWhat","osUpTo","osGroup","osTeam"].forEach(id => $("#" + id).addEventListener("change", syncOs));
 $("#tlFrom").addEventListener("change", setTlRange); $("#tlTo").addEventListener("change", setTlRange);
 $("#tlRangeClear").addEventListener("click", () => { state.tlRange = null; render(); });
 $("#tlMonth").addEventListener("change", pickTlMonth); $("#tlYear").addEventListener("change", pickTlMonth);
