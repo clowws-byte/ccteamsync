@@ -335,6 +335,11 @@ input.txt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;backgr
 .tsp tr.lunch td{background:#f2f2f2;color:#6b7280;font-style:italic}
 .tsp tr.tot td{background:#f7fbfc;font-weight:700}
 @media (prefers-color-scheme:dark){.tsp-wrap{background:#2a2348}}
+
+.login-new{text-align:center;font-size:13.5px;margin-top:4px;padding-top:12px;border-top:1px dashed var(--line);color:var(--muted)}
+.reqrow{display:grid;grid-template-columns:1.6fr 1fr 1.2fr auto auto;gap:8px;align-items:center;margin-top:10px;padding:8px;border-radius:12px;background:rgba(255,255,255,.65)}
+@media (max-width:860px){.reqrow{grid-template-columns:1fr 1fr}}
+@media (prefers-color-scheme:dark){.reqrow{background:rgba(0,0,0,.15)}}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -736,6 +741,19 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <label class="keep"><input type="checkbox" name="keep"> Keep me signed in on this device for 30 days</label>
       <button class="btn primary wide" type="submit">Sign in</button>
       <div class="login-links"><button type="button" class="linkbtn" data-auth="forgot">Forgot password?</button></div>
+      <div class="login-new">New here? <button type="button" class="linkbtn" data-auth="register"><b>Request access</b></button></div>
+    </form>
+    <form id="auth-register" style="display:none" autocomplete="on">
+      <h2>Request access</h2>
+      <p class="muted" style="font-size:13px;margin:-4px 0 4px">Create your sign-in. You can use CCTeamSync once the Administrator approves your request.</p>
+      <label class="fl">Full name<input name="name" autocomplete="name" maxlength="80" required></label>
+      <label class="fl">Work email<input name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="name@company.com" required></label>
+      <label class="fl">Job title<input name="title" maxlength="80" placeholder="e.g. Tax Associate"></label>
+      <label class="fl">Create a password<input name="pw" type="password" autocomplete="new-password" required></label>
+      <label class="fl">Confirm password<input name="pw2" type="password" autocomplete="new-password" required></label>
+      <div class="muted" style="font-size:12px">At least 8 characters, with a letter and a number.</div>
+      <button class="btn primary" type="submit">Send request</button>
+      <div class="login-links"><button type="button" class="linkbtn" data-auth="login">← Back to sign in</button></div>
     </form>
     <form id="auth-forgot" style="display:none">
       <h2>Reset your password</h2>
@@ -1016,6 +1034,7 @@ async function startSession(session){
 // signed in but removed from the team, or the Administrator reset the password since this sign-in
 function checkMyAccount(initial){
   if (!state.session) return false;
+  if (mePending()) { signOut(true, pendingMsg); return false; }
   const me = meMember();
   if (!me) { signOut(true, "This login isn't linked to anyone in the team any more. Ask the Administrator."); return false; }
   const since = Date.parse(state.session.user?.last_sign_in_at || 0) || 0;
@@ -1026,6 +1045,8 @@ function resetData(){ for (const k of Object.keys(raw)) raw[k] = []; state.log =
 function resolveNames(){}   // names come from the team list now
 
 // ---------- roles & visibility ----------
+const pendingMsg = "Thanks — your access request is waiting for the Administrator's approval. You'll be able to sign in once it's approved.";
+function mePending(){ return !!(state.me.uid && raw.members.find(m => m.uid === state.me.uid && m.pending)); }
 function meMember(){ return state.me.uid ? state.allMembers.find(m => m.uid === state.me.uid) || null : null; }
 function role(){ if (state.isOwner) return "director"; const me = meMember(); return !me ? "none" : isMgmt(normAccess(me.access)) ? "manager" : "staff"; }
 const isManagerish = () => role() === "director" || role() === "manager" || hasReports(meMember()?.id);
@@ -1043,7 +1064,8 @@ function treeBelow(id, all = state.allMembers){
   while (grew) { grew = false; all.forEach(m => { if (!m.private && m.managerId && (m.managerId === id || out.has(m.managerId)) && !out.has(m.id)) { out.add(m.id); grew = true; } }); }
   return out;
 }function derive(){
-  state.allMembers = [...raw.pmembers.map(m => ({ ...m, private: true })), ...raw.members];
+  state.pendingMembers = raw.members.filter(m => m.pending);
+  state.allMembers = [...raw.pmembers.map(m => ({ ...m, private: true })), ...raw.members.filter(m => !m.pending)];
   state.allItems = [...raw.pitems.map(i => ({ ...i, _priv: true })), ...raw.items];
   const vis = visibleIds(state.allMembers);
   state.members = state.allMembers.filter(m => vis.has(m.id));
@@ -1433,7 +1455,7 @@ function renderLog(){
   who.value = people.some(e => (e.uid || e.byName) === cur) ? cur : "";
   const rows = state.log.filter(e => (!who.value || (e.uid || e.byName) === who.value) && (!act.value || (act.value === "auth" ? e.kind === "auth" : e.action === act.value)) &&
     (!q || [e.title, e.byName, e.who, state.names[e.uid]].join(" ").toLowerCase().includes(q)));
-  const verbs = { create: "Created", update: "Edited", delete: "Deleted", restore: "Restored", signin: "Signed in", signout: "Signed out", signin_failed: "Failed sign-in", pw_set: "Password", pw_temp: "Password reset", pw_request: "Reset request", setting: "Setting" };
+  const verbs = { create: "Created", update: "Edited", delete: "Deleted", restore: "Restored", signin: "Signed in", access_requested: "Access requested", access_approved: "Access approved", access_rejected: "Access rejected", signout: "Signed out", signin_failed: "Failed sign-in", pw_set: "Password", pw_temp: "Password reset", pw_request: "Reset request", setting: "Setting" };
   const exists = e => (e.kind === "members" ? state.allMembers : e.kind === "jobs" ? state.allJobs : state.allItems).some(x => x.id === e.targetId);
   $("#logTable").innerHTML = `<tr><th>When</th><th>Changed by</th><th>Action</th><th>What</th><th>Details</th><th></th></tr>` + (rows.slice(0, 400).map(e => {
     const when = new Date(e.at);
@@ -2083,7 +2105,7 @@ function authLog(action, title, memberId){ logChange({ action, kind: "auth", id:
 
 function showAuth(view, msg){
   state.authView = view; const el = $("#loginScreen"); el.classList.add("on");
-  ["login","forgot","setpw"].forEach(v => $("#auth-" + v).style.display = v === view ? "" : "none");
+  ["login","forgot","setpw","register"].forEach(v => $("#auth-" + v).style.display = v === view ? "" : "none");
   $("#authMsg").textContent = msg || ""; $("#authMsg").className = "auth-msg";
   $("#authWho").textContent = "";
   if (view === "forgot") { $("#forgotOwner").style.display = "none"; $("#forgotUser").style.display = ""; }
@@ -2106,6 +2128,7 @@ async function doLogin(userId, pw, keep){
   try { if (keep) localStorage.removeItem("ccts-ephemeral"); else { localStorage.setItem("ccts-ephemeral", "1"); sessionStorage.setItem("ccts-tab", "1"); } } catch(_) {}
   state.session = data.session; state.me.uid = data.user.id;
   await loadAll();
+  if (mePending()) { await sb.auth.signOut(); state.session = null; resetData(); return authErr(pendingMsg, true); }
   const me = meMember();
   if (!me) { await sb.auth.signOut(); state.session = null; return authErr("This login isn't linked to anyone in the team. Ask the Administrator."); }
   if (me.mustChange && me.tempExp && me.tempExp < Date.now()) { await sb.auth.signOut(); state.session = null; return authErr("Your temporary password has expired. Ask the Administrator for a new one."); }
@@ -2176,16 +2199,49 @@ function renderSignInCard(){
   const me = meMember(); const reqs = state.allMembers.filter(m => m.resetRequested && !m.private);
   const noLogin = state.allMembers.filter(m => !m.private && !m.uid && m.userId);
   el.innerHTML = `<div class="hd"><h3>Sign-in &amp; passwords</h3></div><div class="bd">
+    ${pendingCard()}
     ${reqs.length ? `<div class="nudge" style="margin-bottom:12px"><b>${reqs.length} password reset request${reqs.length>1?"s":""}</b>${reqs.map(m => `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">${esc(m.name)} (${esc(m.userId || "no email")}) · ${esc(new Date(m.resetRequested).toLocaleString(undefined,{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}))} <button class="btn" data-adm-temp="${esc(m.id)}">Issue temporary password</button></div>`).join("")}</div>` : ""}
     <div class="signin-grid">
       <div><div class="k-l">How sign-in works</div>
-        <div style="font-size:13px;line-height:1.55">Everyone signs in with their <b>email address and password</b>. For each person: add their email (Edit), then click <b>Create login</b> and give them the temporary password. They choose their own password at first sign-in.
+        <div style="font-size:13px;line-height:1.55">Everyone signs in with their <b>email address and password</b>. New people can click <b>Request access</b> on the sign-in page and set their own password — approve them above. Or add someone yourself: add their email (Edit), then click <b>Create login</b> and give them the temporary password. They choose their own password at first sign-in.
         ${noLogin.length ? `<div class="muted" style="margin-top:6px">${noLogin.length} ${noLogin.length>1?"people don't":"person doesn't"} have a login yet: ${noLogin.slice(0,6).map(m => esc(m.name)).join(", ")}${noLogin.length>6?"…":""}</div>` : ""}</div></div>
       <div><div class="k-l">Your sign-in</div>
         ${me ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span>Signed in as <code>${esc(me.userId || "")}</code></span><button class="btn" data-my-pw>Change my password</button></div>
           <div class="muted" style="font-size:12px;margin-top:6px">Forgot your own password? Nobody else can reset the Administrator, so keep the recovery steps from your setup guide somewhere safe.</div>` : ""}</div>
     </div>
   </div>`;
+}
+
+// ---------- access requests (self sign-up awaiting approval) ----------
+function pendingCard(){
+  const list = (state.pendingMembers || []).slice().sort((a, b) => (a.requestedAt || 0) - (b.requestedAt || 0));
+  if (!list.length) return "";
+  const sups = state.allMembers.filter(x => !x.private).sort((a, b) => rank(normAccess(a.access)) - rank(normAccess(b.access)));
+  return `<div class="nudge reqcard" style="margin-bottom:12px"><b>🙋 ${list.length} access request${list.length > 1 ? "s" : ""} waiting for approval</b>
+    ${list.map(m => `<div class="reqrow">
+      <div class="who">${avatar(m)}<div><div><b style="display:inline">${esc(m.name)}</b> <span class="muted">${esc(m.role || "")}</span></div><div class="muted" style="font-size:12px">${esc(m.userId || "")} · ${m.requestedAt ? esc(new Date(m.requestedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : ""}</div></div></div>
+      <select class="f" data-req-role="${esc(m.id)}">${roleOptions("associate")}</select>
+      <select class="f" data-req-mgr="${esc(m.id)}"><option value="">Reports to…</option>${sups.map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(roleLabel(normAccess(x.access)))}</option>`).join("")}</select>
+      <button class="btn primary" data-req-ok="${esc(m.id)}">Approve</button><button class="btn danger" data-req-no="${esc(m.id)}">Reject</button></div>`).join("")}
+    <div class="muted" style="font-size:12px;margin-top:6px">You can also approve in Supabase: Table Editor → <code>access_requests</code> → tick <span style="font-weight:800">approved</span> → Save.</div></div>`;
+}
+async function decideRequest(id, ok){
+  const m = (state.pendingMembers || []).find(x => x.id === id); if (!m) return;
+  if (!ok && !(await confirmBox(`Reject ${m.name}?`, `Their request and login (${m.userId}) will be deleted. They can request again later.`))) return;
+  try {
+    if (ok) {
+      const access = document.querySelector(`[data-req-role="${CSS.escape(id)}"]`)?.value || "associate";
+      let managerId = document.querySelector(`[data-req-mgr="${CSS.escape(id)}"]`)?.value || null;
+      if (access === "hod") managerId = null;
+      const mg = managerId && state.allMembers.find(x => x.id === managerId);
+      if (mg && rank(normAccess(mg.access)) >= rank(access)) return toast(`${mg.name} must rank above ${roleLabel(access)}`);
+      const { error: e1 } = await sb.from("members").update({ data: { ...clean(m), access, managerId } }).eq("id", id); if (e1) throw e1;
+    }
+    const { error } = await sb.from("access_requests").update(ok ? { approved: true } : { rejected: true }).eq("member_id", id).eq("approved", false).eq("rejected", false);
+    if (error) throw error;
+    toast(ok ? `${m.name} approved — they can sign in now` : "Request rejected");
+    queueReload("members");
+  } catch (e) { toast("Couldn't update the request: " + (e.message || "error")); }
 }
 
 // ---------- Functions tab: users & access rights (director only) ----------
@@ -2525,6 +2581,22 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && openMs) { 
 ["#logWho","#logAct"].forEach(sel => $(sel).addEventListener("change", render));
 $("#admQ").addEventListener("input", render);
 $("#auth-login").addEventListener("submit", async e => { e.preventDefault(); const f = e.target; const b = f.querySelector("[type=submit]"); b.disabled = true; authErr("Checking…", true); try { await doLogin(f.userId.value, f.pw.value, f.keep.checked); } finally { b.disabled = false; f.pw.value = ""; } });
+$("#auth-register").addEventListener("submit", async e => { e.preventDefault(); const f = e.target; const b = f.querySelector("[type=submit]");
+  const email = normId(f.email.value), pw = f.pw.value;
+  if (f.name.value.trim().length < 2) return authErr("Please enter your full name.");
+  if (!isEmail(email)) return authErr("Please enter a valid work email.");
+  const pp = pwProblem(pw); if (pp) return authErr(pp);
+  if (pw !== f.pw2.value) return authErr("The two passwords don't match.");
+  b.disabled = true; authErr("Sending…", true);
+  try {
+    const { data, error } = await sb.functions.invoke("register", { body: { name: f.name.value.trim(), email, title: f.title.value.trim(), password: pw } });
+    let msg = data?.error; if (error && !msg) { try { msg = (await error.context.json()).error; } catch(_) { msg = "Couldn't send your request. Please try again."; } }
+    if (msg) return authErr(msg);
+    f.reset(); showAuth("login"); $("#auth-login [name=userId]").value = email;
+    authErr("Request sent! The Administrator will review it. Once approved, sign in here with your email and the password you just created.", true);
+  } catch (_) { authErr("Couldn't send your request. Please check your connection and try again."); }
+  finally { b.disabled = false; }
+});
 $("#auth-forgot").addEventListener("submit", async e => { e.preventDefault(); await requestReset(e.target.userId.value); });
 $("#auth-setpw").addEventListener("submit", async e => { e.preventDefault(); const f = e.target; const b = f.querySelector("[type=submit]"); b.disabled = true;
   try { await setOwnPassword(f.cur.value, f.pw.value, f.pw2.value); } finally { b.disabled = false; f.reset(); } });
@@ -2613,6 +2685,7 @@ document.addEventListener("click", e => {
   if (!t.closest("#acct")) $("#acct").classList.remove("open");
   if (t.closest("[data-signout]")) { $("#acct").classList.remove("open"); signOut(); return; }
   if (t.closest("[data-my-pw]")) { $("#acct").classList.remove("open"); state.forced = false; showAuth("setpw"); return; }
+  const rq = t.closest("[data-req-ok],[data-req-no]"); if (rq) { decideRequest(rq.dataset.reqOk || rq.dataset.reqNo, !!rq.dataset.reqOk); return; }
   const au2 = t.closest("[data-auth]"); if (au2) { const v = au2.dataset.auth; showAuth(v); if (v === "forgot") { $("#forgotOwner").style.display = state.isOwner ? "" : "none"; $("#forgotUser").style.display = state.isOwner ? "none" : ""; } return; }
   if (t.closest("[data-auth-cancel]")) { if (needLogin()) showAuth("login"); else hideAuth(); return; }
   if (t.closest("[data-signout]") && !t.closest("#acct")) { signOut(); return; }
