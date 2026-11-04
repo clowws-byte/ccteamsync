@@ -355,6 +355,10 @@ input.txt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;backgr
 .ms-team{display:flex;gap:6px;align-items:center;padding:6px 10px;border-top:1px dashed var(--line);font-size:12.5px;font-weight:700;color:var(--accent)}
 .btag{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;font-weight:700;background:#efeaff;color:#6a55e0;padding:2px 7px;border-radius:7px;white-space:nowrap}
 select.brsel{max-width:150px}
+.btn.warnbtn{color:#b45309;border-color:#fcd9a8}
+.blk.cancelled,.chip.cancelled{opacity:.45;text-decoration:line-through;filter:grayscale(.8)}
+.stg-cancelled{background:#f1f1f4;color:#6b7280;text-decoration:line-through}
+.st-cancelled{background:#f1f1f4;color:#6b7280}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -645,7 +649,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <label class="fl">Client job<select name="jobId"></select></label>
       <label class="fl">Status<select name="status">
         <option value="planned">Planned</option><option value="progress">In progress</option>
-        <option value="done">Done</option><option value="blocked">Blocked</option></select></label>
+        <option value="done">Done</option><option value="blocked">Blocked</option><option value="cancelled" id="optCancelled">Cancelled</option></select></label>
       <label class="fl">Notes<textarea name="notes" maxlength="1000" placeholder="Details, links, blockers…"></textarea></label>
       <label class="fl" id="repeatWrap">Repeat<select name="repeat">
         <option value="0">Does not repeat</option><option value="5">Every weekday for 1 week</option>
@@ -654,6 +658,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
     </div>
     <div class="ft">
       <button type="button" class="btn danger left" id="delTask">Delete</button>
+      <button type="button" class="btn warnbtn" id="cancelTask">Cancel task</button>
       <button type="button" class="btn" id="dupTask">Duplicate</button>
       <button type="button" class="btn" data-close>Cancel</button>
       <button type="submit" class="btn primary">Save</button>
@@ -715,13 +720,14 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         <label class="fl">Preparer<select name="preparerId"></select></label>
         <label class="fl">Reviewer<select name="reviewerId"></select></label>
       </div>
-      <label class="fl">Stage<select name="stage"><option value="todo">Not started</option><option value="prep">Preparing</option><option value="review">In review</option><option value="changes">Changes requested</option><option value="done">Filed / done</option></select></label>
+      <label class="fl">Stage<select name="stage"><option value="todo">Not started</option><option value="prep">Preparing</option><option value="review">In review</option><option value="changes">Changes requested</option><option value="done">Filed / done</option><option value="cancelled" id="optJobCancelled">Cancelled</option></select></label>
       <label class="fl">Notes<textarea name="notes" maxlength="1000" placeholder="Review points, documents outstanding…"></textarea></label>
       <div id="jobTasks"></div>
       <div class="err" id="jobErr"></div>
     </div>
     <div class="ft">
       <button type="button" class="btn danger left" id="delJob">Delete</button>
+      <button type="button" class="btn warnbtn" id="cancelJob">Cancel job</button>
       <button type="button" class="btn" data-close>Cancel</button>
       <button type="submit" class="btn primary">Save</button>
     </div>
@@ -865,7 +871,11 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
 <script>
 (() => {
 const COLORS = ["#2563eb","#16a34a","#d97706","#db2777","#7c3aed","#0891b2","#dc2626","#4b5563","#65a30d","#ea580c"];
-const STATUS = {planned:"Planned",progress:"In progress",done:"Done",blocked:"Blocked"};
+const STATUS = {planned:"Planned",progress:"In progress",done:"Done",blocked:"Blocked",cancelled:"Cancelled"};
+// who may do what: Administrator / Full access → delete; managers (HOD, Senior Manager, Manager) → cancel; everyone → edit
+const canDeleteWork = () => !!state.isOwner;
+const canCancelWork = () => !!state.isOwner || isMgmt(normAccess(meMember()?.access));
+const jobClosed = j => j?.stage === "done" || j?.stage === "cancelled";
 const DAY_START = 7, DAY_END = 21, WORKDAY_H = 8;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -1154,10 +1164,10 @@ const visibleMembers = () => { const ps = peopleSet(); return sortedMembers().fi
 const itemsOn = ds => state.items.filter(i => i.date === ds && memberById(i.memberId) && itemMatches(i))
   .sort((a,b) => mins(a.start)-mins(b.start));
 const dur = i => Math.max(0, mins(i.end) - mins(i.start));
-const workMins = list => list.filter(i => i.category !== "leave").reduce((s,i) => s+dur(i), 0);
+const workMins = list => list.filter(i => i.category !== "leave" && i.status !== "cancelled").reduce((s,i) => s+dur(i), 0);
 function conflicts(list){
   const set = new Set(); const by = {};
-  list.forEach(i => (by[i.memberId] ||= []).push(i));
+  list.filter(i => i.status !== "cancelled").forEach(i => (by[i.memberId] ||= []).push(i));
   Object.values(by).forEach(arr => {
     arr.sort((a,b) => mins(a.start)-mins(b.start));
     for (let x=0;x<arr.length;x++) for (let y=x+1;y<arr.length;y++){
@@ -1171,7 +1181,7 @@ const isToday = ds => ds === ymd(new Date());
 // a work task whose end time has passed but is still "planned" or "in progress"
 function needsUpdate(i){
   if (i.category === "leave" || i.category === "meeting") return false;
-  if (i.status === "done" || i.status === "blocked") return false;
+  if (i.status === "done" || i.status === "blocked" || i.status === "cancelled") return false;
   const n = new Date(), today = ymd(n), nowM = n.getHours()*60 + n.getMinutes();
   if (i.date < ymd(addDays(n, -14))) return false;
   return i.date < today || (i.date === today && mins(i.end) <= nowM);
@@ -1348,7 +1358,7 @@ function renderDashboard(){
   const weekItems = days.flatMap(dd => itemsOn(ymd(dd)));
   const wcf = new Set(); days.forEach(dd => conflicts(itemsOn(ymd(dd))).forEach(id => wcf.add(id)));
   const att = []; const jatt = [];
-  state.jobs.filter(j => j.stage !== "done" && j.dueDate && jobMatchesSched(j)).forEach(j => {
+  state.jobs.filter(j => !jobClosed(j) && j.dueDate && jobMatchesSched(j)).forEach(j => {
     const d = dueInfo(j);
     if (d.days < 0) jatt.push([j, "Filing overdue", "st-blocked"]);
     else if (d.days <= 3 && j.stage !== "review") jatt.push([j, d.days === 0 ? "Due today" : `Due in ${d.days}d`, "st-blocked"]);
@@ -1424,7 +1434,7 @@ function renderTimelineMonth(){
     const cells = days.map((ds, k) => {
       const list = byKey[m.id + "|" + ds] || []; const wm = workMins(list); monthMins += wm; teamTot[k] += wm;
       const leave = list.some(i => i.category === "leave"); const blocked = list.some(i => i.status === "blocked");
-      const dues = state.jobs.filter(j => j.dueDate === ds && j.stage !== "done" && j.preparerId === m.id);
+      const dues = state.jobs.filter(j => j.dueDate === ds && !jobClosed(j) && j.preparerId === m.id);
       const pct = Math.min(100, wm / (WORKDAY_H * 60) * 100);
       const tip = [parse(ds).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) + " · " + m.name]
         .concat(list.sort((a, b) => mins(a.start) - mins(b.start)).map(i => `${i.start}–${i.end} ${i.title}${i.status === "done" ? " ✓" : i.status === "blocked" ? " (blocked)" : ""}`))
@@ -1454,7 +1464,7 @@ function renderTimelineDay(){
     const offL = pos(ws), offR = 100 - pos(we);
     const blocks = mine.map(i => {
       const l = pos(i.start), w = Math.max(pos(i.end)-l, 1.2);
-      const cls = ["blk", i.status==="done"?"done":"", i.status==="blocked"?"blocked":"", cf.has(i.id)?"conflict":"", i.category==="leave"?"leave":""].join(" ");
+      const cls = ["blk", i.status==="done"?"done":"", i.status==="cancelled"?"cancelled":"", i.status==="blocked"?"blocked":"", cf.has(i.id)?"conflict":"", i.category==="leave"?"leave":""].join(" ");
       const bg = i.category==="leave" ? "#9ca3af" : i.category==="meeting" ? shade(m.color) : m.color;
       const jb = jobById(i.jobId);
       return `<div class="${cls}" data-item="${esc(i.id)}" title="${esc(i.title)} · ${esc(i.start)}–${esc(i.end)} · ${esc(STATUS[i.status])}${jb ? " · " + esc(jobLabel(jb)) : ""}" style="left:${l}%;width:${w}%;top:${5+laneOf[i.id]*laneH}px;height:${laneH-6}px;background:${esc(bg)}">
@@ -1481,9 +1491,9 @@ function renderCalendar(){
     const day = addDays(start, i); const ds = ymd(day);
     if (i >= 35 && day.getMonth() !== d.getMonth()) break;
     const list = itemsOn(ds); const wm = workMins(list);
-    const dues = state.jobs.filter(j => j.dueDate === ds && j.stage !== "done" && jobMatchesSched(j));
+    const dues = state.jobs.filter(j => j.dueDate === ds && !jobClosed(j) && jobMatchesSched(j));
     const dueChips = dues.slice(0,2).map(j => `<div class="chip due" data-job="${esc(j.id)}" title="Due: ${esc(jobLabel(j))}">⚑ ${esc(j.client)} · ${esc(j.type)}</div>`).join("") + (dues.length > 2 ? `<div class="more" style="color:var(--bad)">+${dues.length-2} more due</div>` : "");
-    const chips = dueChips + list.slice(0, dues.length ? 3 : 4).map(it => `<div class="chip ${it.status==="done"?"done":""}" data-item="${esc(it.id)}" title="${esc(memberById(it.memberId)?.name)}: ${esc(it.title)}"><i style="background:${esc(color(it.memberId))}"></i>${esc(it.start)} ${esc(it.title)}</div>`).join("");
+    const chips = dueChips + list.slice(0, dues.length ? 3 : 4).map(it => `<div class="chip ${it.status==="done"?"done":""} ${it.status==="cancelled"?"cancelled":""}" data-item="${esc(it.id)}" title="${esc(memberById(it.memberId)?.name)}: ${esc(it.title)}"><i style="background:${esc(color(it.memberId))}"></i>${esc(it.start)} ${esc(it.title)}</div>`).join("");
     html += `<div class="day ${day.getMonth()!==d.getMonth()?"out":""} ${isToday(ds)?"today":""} ${ds===sel?"sel":""}" data-date="${ds}">
       <div class="num"><b>${day.getDate()}</b>${wm?`<span class="hrs">${hrs(wm)}</span>`:""}</div>${chips}${list.length>4?`<div class="more">+${list.length-4} more</div>`:""}</div>`;
   }
@@ -1534,7 +1544,7 @@ function renderLog(){
   }).join("") || `<tr><td colspan="6" class="empty">${state.log.length ? "No changes match the filter" : "No changes recorded yet. Every new edit, status update and deletion will appear here."}</td></tr>`);
 }
 // ---------- Client jobs, deadlines & review ----------
-const STAGES = { todo: "Not started", prep: "Preparing", review: "In review", changes: "Changes requested", done: "Filed / done" };
+const STAGES = { todo: "Not started", prep: "Preparing", review: "In review", changes: "Changes requested", done: "Filed / done", cancelled: "Cancelled" };
 const FILINGS = window.FILINGS_LIST = ["Form C", "CP204", "CP204A (revision)", "Form E", "Form BE", "Form B", "Form P", "TP documentation", "Tax audit", "Tax investigation", "Advisory", "Client Engagement", "Client Termination", "Strike Off", "Winding Up", "Backlog Form C", "Due Diligence", "Other"];
 const lastDay = (y, m) => new Date(y, m + 1, 0);          // m = 0-based month
 function memberName(id){
@@ -1569,6 +1579,7 @@ function dueInfo(j){
   if (!j.dueDate) return { text: "No due date", cls: "muted", days: 9999 };
   const days = Math.round((parse(j.dueDate) - parse(ymd(new Date()))) / 864e5);
   const date = parse(j.dueDate).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  if (j.stage === "cancelled") return { text: `Cancelled · ${date}`, cls: "muted", days };
   if (j.stage === "done") return { text: date, cls: "muted", days };
   if (days < 0) return { text: `Overdue ${-days}d · ${date}`, cls: "due-bad", days };
   if (days === 0) return { text: `Due today · ${date}`, cls: "due-bad", days };
@@ -1600,7 +1611,7 @@ function renderJobs(){
   renderJobBar();
   const today = ymd(new Date()), in7 = ymd(addDays(new Date(), 7)), in30 = ymd(addDays(new Date(), 30));
   const vis = state.jobs;
-  const open = vis.filter(j => j.stage !== "done");
+  const open = vis.filter(j => !jobClosed(j));
   const k = (label, v, s, cls) => `<div class="card kpi"><div class="k">${label}</div><div class="v" style="${cls?`color:var(--${cls})`:""}">${v}</div><div class="s">${s}</div></div>`;
   const overdue = open.filter(j => j.dueDate && j.dueDate < today), soon = open.filter(j => j.dueDate && j.dueDate >= today && j.dueDate <= in7);
   const mStart = ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -1617,7 +1628,7 @@ function renderJobs(){
       <td>${esc(j.type)}${j.ya ? `<div class="muted" style="font-size:12px">YA ${esc(j.ya)}</div>` : ""}</td>
       <td><span class="${d.cls}">${esc(d.text)}</span></td><td>${esc(memberName(j.preparerId))}</td><td>${esc(memberName(j.reviewerId))}</td>
       <td>${stagePill(j.stage)}</td><td>${hrs(jobHours(j))}</td>
-      <td><div class="acts">${jobActionsHtml(j)}${canEditJob(j) && j.stage !== "done" ? `<button class="btn" data-job-sched="${esc(j.id)}">+ Schedule work</button>` : ""}</div></td></tr>`;
+      <td><div class="acts">${jobActionsHtml(j)}${canEditJob(j) && !jobClosed(j) ? `<button class="btn" data-job-sched="${esc(j.id)}">+ Schedule work</button>` : ""}</div></td></tr>`;
   }).join("") || `<tr><td colspan="10" class="empty">${vis.length ? `No jobs match these filters. <button class="linkbtn" data-clear-all="j">Clear filters</button>` : "No client jobs yet — add one to track filings, deadlines and reviews."}</td></tr>`);
   $("#jobTable").insertAdjacentHTML("beforebegin", ""); const cnt = $("#jobCount"); if (cnt) cnt.textContent = `Showing ${rows.length} of ${vis.length} job${vis.length===1?"":"s"}${nAct ? ` · ${nAct} filter${nAct>1?"s":""} on` : ""}`;
 }
@@ -1639,7 +1650,9 @@ function openJob(j, preset = {}){
   $("#clientList").innerHTML = [...new Set(state.allJobs.map(x => x.client).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">`).join("");
   $("#jobTitle").textContent = j ? (canEd ? "Edit client job" : "Client job") : "New client job";
   $("#jobTicket").style.display = ""; $("#jobTicket").innerHTML = j?.ticket ? `🎫 Ticket no. <b>${esc(j.ticket)}</b>` : `🎫 Ticket no. <span class="muted">will be given automatically when you save</span>`;
-  $("#delJob").style.display = j && canEd ? "" : "none";
+  $("#delJob").style.display = j && canEd && canDeleteWork() ? "" : "none";
+  $("#cancelJob").style.display = j && canEd && canCancelWork() && j.stage !== "cancelled" ? "" : "none";
+  const ojc = $("#optJobCancelled"); ojc.hidden = ojc.disabled = !(canCancelWork() || j?.stage === "cancelled");
   f.querySelector("[type=submit]").style.display = canEd ? "" : "none";
   f.querySelectorAll("input,select,textarea,button.linkbtn").forEach(el => el.disabled = !canEd);
   const linked = j ? state.items.filter(i => i.jobId === j.id).sort((a,b) => (a.date+a.start).localeCompare(b.date+b.start)) : [];
@@ -1710,7 +1723,7 @@ try { const sv = JSON.parse(localStorage.getItem("ts-filters") || "{}"); if (sv.
 const saveFilters = () => { try { localStorage.setItem("ts-filters", JSON.stringify({ F, JF })); } catch(_) {} };
 let openMs = null;
 const DUE_OPTS = [["overdue","Overdue"],["today","Due today"],["7","Within 7 days"],["30","Within 30 days"],["later","Later"],["none","No due date"]];
-const dueBucket = j => { if (!j.dueDate) return "none"; const d = dueInfo(j).days; if (d < 0) return j.stage === "done" ? "past" : "overdue"; return d === 0 ? "today" : d <= 7 ? "7" : d <= 30 ? "30" : "later"; };
+const dueBucket = j => { if (!j.dueDate) return "none"; const d = dueInfo(j).days; if (d < 0) return jobClosed(j) ? "past" : "overdue"; return d === 0 ? "today" : d <= 7 ? "7" : d <= 30 ? "30" : "later"; };
 const inDue = (j, sel) => !sel.length || sel.some(s => { const b = dueBucket(j); if (s === "30") return b === "30" || b === "7" || b === "today"; if (s === "7") return b === "7" || b === "today"; return b === s; });
 
 // option lists
@@ -2063,14 +2076,14 @@ function osData(){
   const set = who ? ($("#osTeam").checked ? teamOf(who) : new Set([who])) : null; const inSet = id => !set || set.has(id);
   const br = $("#osBranch").value; const inBr = j => !br || j?.branch === br;
   const today = ymd(new Date());
-  const jobs = what === "tasks" ? [] : state.jobs.filter(j => j.stage !== "done" && inBr(j) && (inSet(j.preparerId) || inSet(j.reviewerId)) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
+  const jobs = what === "tasks" ? [] : state.jobs.filter(j => !jobClosed(j) && inBr(j) && (inSet(j.preparerId) || inSet(j.reviewerId)) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
     .map(j => { const d = dueInfo(j); const days = j.dueDate ? d.days : null;
       return { ticket: j.ticket || "", branch: j.branch || "", client: j.client || "", type: j.type || "", ya: j.ya || "", due: j.dueDate || "", days,
         status: !j.dueDate ? "No due date" : days < 0 ? `Overdue ${-days} day${days === -1 ? "" : "s"}` : days === 0 ? "Due today" : days <= 7 ? `Due in ${days} day${days === 1 ? "" : "s"}` : `${days} days left`,
         level: !j.dueDate ? 0 : days <= 0 ? 3 : days <= 7 ? 2 : 1,
         stage: STAGES[j.stage] || STAGES.todo, prep: memberName(j.preparerId) || "—", rev: memberName(j.reviewerId) || "—", hours: round1(jobHours(j) / 60), notes: j.notes || "" }; })
     .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.client.localeCompare(b.client));
-  const tasks = what === "jobs" ? [] : state.items.filter(i => i.category !== "leave" && i.category !== "meeting" && i.status !== "done" && i.date <= today && inSet(i.memberId) && (!br || inBr(jobById(i.jobId)) || (!i.jobId && memberById(i.memberId)?.branch === br)))
+  const tasks = what === "jobs" ? [] : state.items.filter(i => i.category !== "leave" && i.category !== "meeting" && i.status !== "done" && i.status !== "cancelled" && i.date <= today && inSet(i.memberId) && (!br || inBr(jobById(i.jobId)) || (!i.jobId && memberById(i.memberId)?.branch === br)))
     .map(i => { const j = jobById(i.jobId); const age = Math.round((parse(today) - parse(i.date)) / 864e5);
       return { date: i.date, age, staff: memberName(i.memberId), task: i.title || "", client: j ? j.client : "", ticket: j?.ticket || "", status: STATUS[i.status] || i.status, notes: i.notes || "" }; })
     .sort((a, b) => a.date.localeCompare(b.date) || a.staff.localeCompare(b.staff));
@@ -2207,7 +2220,7 @@ function syncTs(){ const d = tsWeekDays(); const m = memberById($("#tsWho").valu
 function timesheetData(){
   const m = memberById($("#tsWho").value); if (!m) return null;
   const days7 = tsWeekDays();
-  const mine = state.items.filter(i => i.memberId === m.id && i.date >= days7[0] && i.date <= days7[6]);
+  const mine = state.items.filter(i => i.memberId === m.id && i.date >= days7[0] && i.date <= days7[6] && i.status !== "cancelled");
   const days = days7.filter((ds, k) => k < 5 || mine.some(i => i.date === ds));
   const data = { name: m.private ? "Administrator" : m.name, from: days7[0], to: days7[4],
     submit: parse(ymd(addDays(parse(days7[0]), 7))).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
@@ -2293,17 +2306,17 @@ async function exportJobs(due){
   const head = ["Ticket no.","Branch","Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Filed / done on","Notes"];
   const rows = [head];
   list.forEach(j => { const d = dueInfo(j); const tasks = state.items.filter(i => i.jobId === j.id);
-    const st = j.stage === "done" ? "Filed" : !j.dueDate ? "" : d.days < 0 ? "Overdue" : d.days === 0 ? "Due today" : d.days <= 7 ? "Due within 7 days" : "On track";
-    rows.push([j.ticket || "", j.branch ? branchLabel(j.branch) : "", j.client, j.type, j.ya || "", j.refDate ? xlDate(j.refDate) : "", j.dueDate ? xlDate(j.dueDate) : "", j.stage === "done" || !j.dueDate ? "" : d.days, st, STAGES[j.stage] || STAGES.todo, memberName(j.preparerId), memberName(j.reviewerId), round1(jobHours(j) / 60), tasks.length, j.doneAt ? xlDate(j.doneAt) : "", j.notes || ""]); });
+    const st = j.stage === "cancelled" ? "Cancelled" : j.stage === "done" ? "Filed" : !j.dueDate ? "" : d.days < 0 ? "Overdue" : d.days === 0 ? "Due today" : d.days <= 7 ? "Due within 7 days" : "On track";
+    rows.push([j.ticket || "", j.branch ? branchLabel(j.branch) : "", j.client, j.type, j.ya || "", j.refDate ? xlDate(j.refDate) : "", j.dueDate ? xlDate(j.dueDate) : "", jobClosed(j) || !j.dueDate ? "" : d.days, st, STAGES[j.stage] || STAGES.todo, memberName(j.preparerId), memberName(j.reviewerId), round1(jobHours(j) / 60), tasks.length, j.doneAt ? xlDate(j.doneAt) : "", j.notes || ""]); });
   const work = [["Ticket no.","Client","Filing","Date","Day","Start","End","Hours","Team member","Task","Status"]];
   list.forEach(j => state.items.filter(i => i.jobId === j.id).sort((a,b) => (a.date + a.start).localeCompare(b.date + b.start))
     .forEach(i => work.push([j.ticket || "", j.client, j.type, xlDate(i.date), dayName(i.date), i.start, i.end, round1(dur(i)/60), memberName(i.memberId), i.title, STATUS[i.status] || i.status])));
   // summary by stage and by person
   const sum = [["Stage","Jobs"]]; Object.entries(STAGES).forEach(([k, v]) => sum.push([v, list.filter(j => (j.stage || "todo") === k).length]));
-  sum.push([], ["Due status","Jobs"], ["Overdue", list.filter(j => j.stage !== "done" && j.dueDate && j.dueDate < today).length], ["Due within 7 days", list.filter(j => j.stage !== "done" && j.dueDate >= today && dueInfo(j).days <= 7).length]);
+  sum.push([], ["Due status","Jobs"], ["Overdue", list.filter(j => !jobClosed(j) && j.dueDate && j.dueDate < today).length], ["Due within 7 days", list.filter(j => !jobClosed(j) && j.dueDate >= today && dueInfo(j).days <= 7).length]);
   sum.push([], ["Person","Preparing (open)","Reviewing (open)","Filed"]);
   const ppl = [...new Set(list.flatMap(j => [j.preparerId, j.reviewerId]).filter(Boolean))];
-  ppl.forEach(id => sum.push([memberName(id), list.filter(j => j.preparerId === id && j.stage !== "done").length, list.filter(j => j.reviewerId === id && j.stage !== "done").length, list.filter(j => j.preparerId === id && j.stage === "done").length]));
+  ppl.forEach(id => sum.push([memberName(id), list.filter(j => j.preparerId === id && !jobClosed(j)).length, list.filter(j => j.reviewerId === id && !jobClosed(j)).length, list.filter(j => j.preparerId === id && j.stage === "done").length]));
   const f = filterSummary("j");
   await saveWorkbook(due ? `Client jobs due ${due[0]} to ${due[1]}.xlsx` : `Client jobs ${today}.xlsx`, [
     { name: "Client jobs", rows, cols: [14,18,28,18,6,14,12,9,16,16,18,18,10,7,12,40], dateCols: [5,6,14], numCols: [12] },
@@ -2617,7 +2630,7 @@ function renderMine(){
       <div class="card"><div class="hd"><h3>${isToday(focus) ? "Today" : parse(focus).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"short"})}</h3><span class="muted" style="font-size:12px">${hrs(workMins(dayItems))} scheduled</span></div>
         <div class="bd">${dayItems.length ? dayItems.map(taskRow).join("") : `<div class="empty">Nothing scheduled${canEditFor(me.id) ? ` — <button class="linkbtn" data-add-mine>add a task</button>` : ""}</div>`}</div></div>
       <div class="grid" style="align-content:start">
-        ${(() => { const mj = state.jobs.filter(j => j.stage !== "done" && (j.preparerId === me.id || j.reviewerId === me.id)).sort((a,b) => String(a.dueDate||"9999").localeCompare(String(b.dueDate||"9999")));
+        ${(() => { const mj = state.jobs.filter(j => !jobClosed(j) && (j.preparerId === me.id || j.reviewerId === me.id)).sort((a,b) => String(a.dueDate||"9999").localeCompare(String(b.dueDate||"9999")));
           return `<div class="card"><div class="hd"><h3>My client jobs</h3><a href="#jobs" class="linkbtn">All jobs</a></div><div class="bd">${mj.length ? mj.slice(0,6).map(j => { const d = dueInfo(j); return `<div class="task"><div class="main" data-job="${esc(j.id)}"><div class="t">${esc(j.client)} · ${esc(j.type)}</div><div class="m"><span class="${d.cls}">${esc(d.text)}</span> · ${j.preparerId === me.id ? `you prepare → ${esc(memberName(j.reviewerId))} reviews` : `${esc(memberName(j.preparerId))} prepares → you review`}</div></div>${stagePill(j.stage)}<div class="qs">${jobActionsHtml(j)}</div></div>`; }).join("") : `<div class="empty">No open client jobs assigned to you</div>`}</div></div>`; })()}
         <div class="card"><div class="hd"><h3>My week so far</h3></div><div class="bd"><div class="mini-stats">
           <div><b>${finished.length}/${weekWork.length}</b><span>tasks done</span></div>
@@ -2654,14 +2667,16 @@ function openTask(item, preset={}, override={}){
   const v = item || { title:"", memberId: pm || ed[0].id, category:"work", date: preset.date || ymd(state.date), start: preset.start || "09:00", end: preset.end || "10:00", status:"planned", notes:"" };
   ["title","memberId","category","date","start","end","status","notes"].forEach(k => f[k].value = v[k] ?? "");
   if (override.status) f.status.value = override.status;
-  const jobOpts = state.jobs.filter(j => j.stage !== "done" || j.id === v.jobId).sort((a,b) => String(a.client).localeCompare(String(b.client)));
+  const jobOpts = state.jobs.filter(j => !jobClosed(j) || j.id === v.jobId).sort((a,b) => String(a.client).localeCompare(String(b.client)));
   f.jobId.innerHTML = `<option value="">— Not linked to a client job</option>` + jobOpts.map(j => `<option value="${esc(j.id)}">${esc(jobLabel(j))}${j.dueDate ? " · due " + esc(parse(j.dueDate).toLocaleDateString(undefined,{day:"numeric",month:"short"})) : ""}</option>`).join("");
   f.jobId.value = (item ? item.jobId : preset.jobId) || "";
   if (!item && preset.jobId) { const jb = jobById(preset.jobId); if (jb) f.title.value = `${jb.type} – ${jb.client}`; }
   f.repeat.value = "0";
   $("#repeatWrap").style.display = item ? "none" : "";
   $("#taskTitle").textContent = item ? (canEd ? "Edit task" : "Task details") : "New task";
-  $("#delTask").style.display = item && canEd ? "" : "none";
+  $("#delTask").style.display = item && canEd && canDeleteWork() ? "" : "none";
+  $("#cancelTask").style.display = item && canEd && canCancelWork() && item.status !== "cancelled" ? "" : "none";
+  const oc = $("#optCancelled"); oc.hidden = oc.disabled = !(canCancelWork() || item?.status === "cancelled");
   $("#dupTask").style.display = item && canEd ? "" : "none";
   f.querySelector("[type=submit]").style.display = canEd ? "" : "none";
   f.querySelectorAll("input,select,textarea").forEach(el => el.disabled = !canEd);
@@ -2671,7 +2686,8 @@ function openTask(item, preset={}, override={}){
   if (canEd) setTimeout(() => (override.askReason ? f.notes : f.title).focus(), 30);
 }
 $("#taskForm").addEventListener("submit", async e => {
-  e.preventDefault(); const f = e.target;
+  e.preventDefault();
+  if (e.target.status.value === "cancelled" && editingItem?.status !== "cancelled" && !canCancelWork()) return $("#taskErr").textContent = "Only a manager or the Administrator can cancel a task."; const f = e.target;
   const data = { title: f.title.value.trim(), memberId: f.memberId.value, jobId: f.jobId.value || null, category: f.category.value, date: f.date.value, start: f.start.value, end: f.end.value, status: f.status.value, notes: f.notes.value.trim() };
   $("#taskErr").style.color = "";
   if (!data.title) return $("#taskErr").textContent = "Give the task a name.";
@@ -2692,7 +2708,13 @@ $("#taskForm").addEventListener("submit", async e => {
     $("#taskScrim").classList.remove("on");
   } catch(_) {} finally { btn.disabled = false; }
 });
+$("#cancelTask").addEventListener("click", async () => {
+  const it = editingItem; if (!it || !canCancelWork()) return;
+  if (!(await confirmBox("Cancel this task?", `“${it.title}” stays on the record but is marked Cancelled and no longer counts towards hours or outstanding work.`, "Cancel task"))) return;
+  try { await commit("items", it.id, { ...it, status: "cancelled", cancelledAt: Date.now(), cancelledBy: meMember()?.name || "", updatedAt: Date.now() }); $("#taskScrim").classList.remove("on"); toast("Task cancelled"); } catch(_) {}
+});
 $("#delTask").addEventListener("click", async () => {
+  if (!canDeleteWork()) return;
   if (!editingItem) return;
   if (!(await confirmBox("Delete this task?", `“${editingItem.title}” will be removed for everyone.`))) return;
   try { await commit("items", editingItem.id, null); $("#taskScrim").classList.remove("on"); toast(state.isOwner ? "Task deleted — restore it from the Log book" : "Task deleted"); } catch(_) {}
@@ -2853,6 +2875,7 @@ $("#jobForm").addEventListener("submit", async e => {
   $("#jobErr").style.color = "";
   if (!data.client) return $("#jobErr").textContent = "Enter the client's name.";
   if (!data.branch) return $("#jobErr").textContent = "Choose the branch for this job.";
+  if (data.stage === "cancelled" && editingJob?.stage !== "cancelled" && !canCancelWork()) return $("#jobErr").textContent = "Only a manager or the Administrator can cancel a job.";
   if (!data.dueDate) return $("#jobErr").textContent = "Set a due date (use the suggested statutory date if it applies).";
   if (data.preparerId && data.preparerId === data.reviewerId) return $("#jobErr").textContent = "The reviewer should be a different person from the preparer.";
   if (!state.isOwner && data.preparerId && !canEditFor(data.preparerId) && !canEditFor(data.reviewerId)) return $("#jobErr").textContent = "You can only create jobs for people you manage.";
@@ -2860,8 +2883,13 @@ $("#jobForm").addEventListener("submit", async e => {
   if (data.stage === "done") data.doneAt = editingJob?.doneAt || ymd(new Date());
   try { await commit("jobs", editingJob?.id || uid(), { ...(editingJob || {}), ...data }); $("#jobScrim").classList.remove("on"); toast(editingJob ? "Job updated" : "Job added"); } catch(_) {}
 });
+$("#cancelJob").addEventListener("click", async () => {
+  const j = editingJob; if (!j || !canCancelWork()) return;
+  if (!(await confirmBox("Cancel this client job?", `${jobLabel(j)} stays on record (ticket ${j.ticket || "—"}) but is marked Cancelled and drops off the open and outstanding lists.`, "Cancel job"))) return;
+  try { await commit("jobs", j.id, { ...j, stage: "cancelled", cancelledAt: ymd(new Date()), cancelledBy: meMember()?.name || "", updatedAt: Date.now() }); $("#jobScrim").classList.remove("on"); toast("Job cancelled"); } catch(_) {}
+});
 $("#delJob").addEventListener("click", async () => {
-  const j = editingJob; if (!j) return;
+  const j = editingJob; if (!j || !canDeleteWork()) return;
   const n = state.allItems.filter(i => i.jobId === j.id).length;
   if (!(await confirmBox("Delete this client job?", `${jobLabel(j)} will be removed.${n ? ` Its ${n} scheduled task${n>1?"s":""} stay on the timeline but lose the link.` : ""}${state.isOwner ? " You can restore it from the Log book." : ""}`))) return;
   try { await commit("jobs", j.id, null); $("#jobScrim").classList.remove("on"); toast("Job deleted"); } catch(_) {}
