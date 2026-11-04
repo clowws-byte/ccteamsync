@@ -2889,7 +2889,6 @@ $("#jobForm").addEventListener("submit", async e => {
   if (!data.branch) return $("#jobErr").textContent = "Choose the branch for this job.";
   if (data.stage === "cancelled" && editingJob?.stage !== "cancelled" && !canCancelWork()) return $("#jobErr").textContent = "Only a manager or the Administrator can cancel a job.";
   if (!data.dueDate) return $("#jobErr").textContent = "Set a due date (use the suggested statutory date if it applies).";
-  if (data.preparerId && data.preparerId === data.reviewerId) return $("#jobErr").textContent = "The reviewer should be a different person from the preparer.";
   data.createdBy = editingJob?.createdBy || (editingJob ? null : meMember()?.id) || null; if (!data.createdBy) delete data.createdBy;
   if (editingJob?.demo) data.demo = true;
   if (data.stage === "done") data.doneAt = editingJob?.doneAt || ymd(new Date());
