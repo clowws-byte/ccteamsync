@@ -874,6 +874,14 @@ const COLORS = ["#2563eb","#16a34a","#d97706","#db2777","#7c3aed","#0891b2","#dc
 const STATUS = {planned:"Planned",progress:"In progress",done:"Done",blocked:"Blocked",cancelled:"Cancelled"};
 // who may do what: Administrator / Full access → delete; managers (HOD, Senior Manager, Manager) → cancel; everyone → edit
 const canDeleteWork = () => !!state.isOwner;
+// everyone you can assign work to: your own people first, then the rest of the firm (names only)
+function assignOptions(sel, mine){
+  const mineIds = new Set(mine.map(m => m.id));
+  const others = (state.directory || []).filter(d => !mineIds.has(d.id)).sort((a, b) => String(a.name).localeCompare(b.name));
+  const lab = (n, b) => `${n}${b ? " · " + b : ""}`;
+  return `<optgroup label="My team">${mine.map(m => `<option value="${esc(m.id)}" ${m.id === sel ? "selected" : ""}>${esc(m.private ? "You (Administrator)" : lab(m.name, m.branch))}</option>`).join("")}</optgroup>`
+    + (others.length ? `<optgroup label="Other people">${others.map(d => `<option value="${esc(d.id)}" ${d.id === sel ? "selected" : ""}>${esc(lab(d.name, d.branch))}</option>`).join("")}</optgroup>` : "");
+}
 const canCancelWork = () => !!state.isOwner || isMgmt(normAccess(meMember()?.access));
 const jobClosed = j => j?.stage === "done" || j?.stage === "cancelled";
 const DAY_START = 7, DAY_END = 21, WORKDAY_H = 8;
@@ -935,10 +943,10 @@ const SB_KEY = "sb_publishable_ep51rONZmejeZz0QWcCtWg_UGcP9_1h";   // publishabl
 const LOGIN_DOMAIN = "users.ccteamsync.app";
 let sb = null;
 const TABLE = { members: "members", items: "items", jobs: "jobs" };
-async function save(kind, id, data, priv){
+async function save(kind, id, data, priv, isNew){
   const d = { ...data };
   if (kind === "items") { if (priv) d._p = "1"; else delete d._p; }
-  const { error } = await sb.from(TABLE[kind]).upsert({ id, data: d });
+  const { error } = isNew ? await sb.from(TABLE[kind]).insert({ id, data: d }) : await sb.from(TABLE[kind]).upsert({ id, data: d });
   if (error) { handleWriteErr(error); throw error; }
   queueReload(kind);
 }
@@ -961,7 +969,7 @@ async function commit(kind, id, after, opts = {}){
   const before = clean(prev);
   const privOf = d => !d || kind === "jobs" ? false : kind === "members" ? !!d.private : !!state.allMembers.find(m => m.id === d.memberId)?.private;
   const data = clean(after);
-  if (data) await save(kind, id, data, privOf(data));
+  if (data) await save(kind, id, data, privOf(data), !before);
   else if (before) await remove(kind, id);
   else return;
   if (data && ((kind === "items" && data.status === "done" && before?.status !== "done") || (kind === "jobs" && data.stage === "done" && before?.stage !== "done"))) { try { confetti(); } catch(_) {} }
@@ -1034,6 +1042,7 @@ async function loadAll(){
   raw.members = m.filter(x => !x.private); raw.pmembers = m.filter(x => x.private);
   raw.items = i.filter(x => x._p !== "1"); raw.pitems = i.filter(x => x._p === "1");
   raw.jobs = j;
+  try { const { data: dir } = await sb.rpc("staff_directory"); state.directory = dir || []; } catch(_) { state.directory = []; }
   try { const { data: cf } = await sb.from("config").select("id,data").in("id", ["roleRights", "features"]);
     const by = Object.fromEntries((cf || []).map(r => [r.id, r.data])); state.roleRights = by.roleRights || {}; state.fullAccessReady = !!by.features?.fullAccess; } catch(_) {}
   identify(); derive();
@@ -1140,7 +1149,7 @@ function treeBelow(id, all = state.allMembers){
   state.members = state.allMembers.filter(m => vis.has(m.id));
   state.items = state.allItems.filter(i => vis.has(i.memberId));
   state.allJobs = raw.jobs;
-  state.jobs = state.isOwner ? raw.jobs : raw.jobs.filter(j => vis.has(j.preparerId) || vis.has(j.reviewerId));
+  state.jobs = raw.jobs;   // the database already limits this to jobs you may see (yours, your people's, and your team's tickets)
 }
 function canEditFor(memberId){
   if (!state.canWrite || !memberId) return false;
@@ -1551,6 +1560,7 @@ function memberName(id){
   if (!id) return "—";
   const m = state.allMembers.find(x => x.id === id);
   if (m) return m.private ? (state.isOwner ? "You (Administrator)" : "Administrator") : m.name;
+  const dm = (state.directory || []).find(x => x.id === id); if (dm) return dm.name;
   return state.isOwner ? "removed person" : "Administrator";
 }
 const jobLabel = j => j ? `${j.ticket ? j.ticket + " · " : ""}${j.client || "Client"} · ${j.type || "Job"}${j.ya ? " YA" + j.ya : ""}` : "";
@@ -1587,7 +1597,7 @@ function dueInfo(j){
   return { text: `${days}d · ${date}`, cls: "", days };
 }
 const stagePill = s => `<span class="pill stg-${esc(s || "todo")}">${esc(STAGES[s] || STAGES.todo)}</span>`;
-function canEditJob(j){ return state.isOwner || (!!j && (canEditFor(j.preparerId) || canEditFor(j.reviewerId))); }
+function canEditJob(j){ return state.isOwner || (!!j && (canEditFor(j.preparerId) || canEditFor(j.reviewerId) || (!!j.createdBy && j.createdBy === meMember()?.id))); }
 function iAm(id){ const me = meMember(); return !!me && me.id === id; }
 function jobActionsHtml(j){
   if (!state.canWrite) return "";
@@ -1641,12 +1651,12 @@ function openJob(j, preset = {}){
   const opts = (sel) => `<option value="">—</option>` + sortedMembers().map(m => `<option value="${esc(m.id)}" ${m.id === sel ? "selected" : ""}>${esc(m.private ? "You (Administrator)" : m.name)}</option>`).join("");
   const v = j || { client: "", type: "Form C", ya: String(new Date().getFullYear()), refDate: "", dueDate: "", preparerId: preset.preparerId || (ed.find(m => !m.private) || ed[0])?.id || "", reviewerId: "", stage: "todo", notes: "" };
   f.client.value = v.client || ""; f.type.innerHTML = [...new Set(FILINGS.concat(v.type ? [v.type] : []))].map(t => `<option>${esc(t)}</option>`).join(""); f.type.value = v.type || "Form C"; f.ya.value = v.ya || ""; f.refDate.value = v.refDate || ""; f.dueDate.value = v.dueDate || "";
-  f.preparerId.innerHTML = opts(v.preparerId); f.reviewerId.innerHTML = opts(v.reviewerId);
-  if (v.reviewerId && !sortedMembers().some(m => m.id === v.reviewerId)) f.reviewerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.reviewerId)}" selected>${esc(memberName(v.reviewerId))}</option>`);
-  if (v.preparerId && !sortedMembers().some(m => m.id === v.preparerId)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
+  f.preparerId.innerHTML = `<option value="">—</option>` + assignOptions(v.preparerId, sortedMembers()); f.reviewerId.innerHTML = `<option value="">—</option>` + assignOptions(v.reviewerId, sortedMembers());
+  if (v.reviewerId && !f.reviewerId.querySelector(`option[value="${CSS.escape(v.reviewerId)}"]`)) f.reviewerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.reviewerId)}" selected>${esc(memberName(v.reviewerId))}</option>`);
+  if (v.preparerId && !f.preparerId.querySelector(`option[value="${CSS.escape(v.preparerId)}"]`)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
   f.branch.innerHTML = branchOptions(v.branch || (!j ? (memberById(v.preparerId)?.branch || meMember()?.branch || "") : ""));
-  f.preparerId.onchange = () => { if (!f.branch.value) { const b = memberById(f.preparerId.value)?.branch; if (b) f.branch.value = b; } };
+  f.preparerId.onchange = () => { if (!f.branch.value) { const b = memberById(f.preparerId.value)?.branch || (state.directory || []).find(d => d.id === f.preparerId.value)?.branch; if (b) f.branch.value = b; } };
   $("#clientList").innerHTML = [...new Set(state.allJobs.map(x => x.client).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">`).join("");
   $("#jobTitle").textContent = j ? (canEd ? "Edit client job" : "Client job") : "New client job";
   $("#jobTicket").style.display = ""; $("#jobTicket").innerHTML = j?.ticket ? `🎫 Ticket no. <b>${esc(j.ticket)}</b>` : `🎫 Ticket no. <span class="muted">will be given automatically when you save</span>`;
@@ -2662,7 +2672,7 @@ function openTask(item, preset={}, override={}){
   const canEd = item ? canEditFor(item.memberId) : true;
   const f = $("#taskForm");
   const opts = item && !canEd ? sortedMembers().filter(m => m.id === item.memberId) : ed;
-  f.memberId.innerHTML = opts.map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.private ? " (private)" : ""}</option>`).join("");
+  f.memberId.innerHTML = item ? opts.map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.private ? " (private)" : ""}</option>`).join("") : assignOptions("", ed);
   const pm = [preset.memberId, F.people.length === 1 ? F.people[0] : null].find(id => id && ed.some(m => m.id === id));
   const v = item || { title:"", memberId: pm || ed[0].id, category:"work", date: preset.date || ymd(state.date), start: preset.start || "09:00", end: preset.end || "10:00", status:"planned", notes:"" };
   ["title","memberId","category","date","start","end","status","notes"].forEach(k => f[k].value = v[k] ?? "");
@@ -2692,7 +2702,9 @@ $("#taskForm").addEventListener("submit", async e => {
   $("#taskErr").style.color = "";
   if (!data.title) return $("#taskErr").textContent = "Give the task a name.";
   if (mins(data.end) <= mins(data.start)) return $("#taskErr").textContent = "End time must be after the start time.";
-  if (!canEditFor(data.memberId)) return $("#taskErr").textContent = "You can't schedule work for this person.";
+  const forOther = !editingItem && !canEditFor(data.memberId) && (state.directory || []).some(d => d.id === data.memberId);
+  if (!canEditFor(data.memberId) && !forOther) return $("#taskErr").textContent = "You can't schedule work for this person.";
+  if (forOther) data.createdBy = meMember()?.id || null;
   if (editingItem?.demo) data.demo = true;
   data.updatedAt = Date.now();
   const btn = f.querySelector("[type=submit]"); btn.disabled = true;
@@ -2703,7 +2715,7 @@ $("#taskForm").addEventListener("submit", async e => {
       if (n) { let d = parse(data.date); while (dates.length < n) { d = addDays(d,1); if (d.getDay()%6) dates.push(ymd(d)); } if (!(parse(data.date).getDay()%6)) dates.shift(); }
       const batch = dates.length > 1 ? uid() : null;
       for (const ds of dates) await commit("items", uid(), {...data, date: ds}, { batch });
-      toast(dates.length > 1 ? `${dates.length} tasks added` : "Task added");
+      toast(forOther ? `Task sent to ${memberName(data.memberId)} — it's now in their schedule` : dates.length > 1 ? `${dates.length} tasks added` : "Task added");
     }
     $("#taskScrim").classList.remove("on");
   } catch(_) {} finally { btn.disabled = false; }
@@ -2878,7 +2890,7 @@ $("#jobForm").addEventListener("submit", async e => {
   if (data.stage === "cancelled" && editingJob?.stage !== "cancelled" && !canCancelWork()) return $("#jobErr").textContent = "Only a manager or the Administrator can cancel a job.";
   if (!data.dueDate) return $("#jobErr").textContent = "Set a due date (use the suggested statutory date if it applies).";
   if (data.preparerId && data.preparerId === data.reviewerId) return $("#jobErr").textContent = "The reviewer should be a different person from the preparer.";
-  if (!state.isOwner && data.preparerId && !canEditFor(data.preparerId) && !canEditFor(data.reviewerId)) return $("#jobErr").textContent = "You can only create jobs for people you manage.";
+  data.createdBy = editingJob?.createdBy || (editingJob ? null : meMember()?.id) || null; if (!data.createdBy) delete data.createdBy;
   if (editingJob?.demo) data.demo = true;
   if (data.stage === "done") data.doneAt = editingJob?.doneAt || ymd(new Date());
   try { await commit("jobs", editingJob?.id || uid(), { ...(editingJob || {}), ...data }); $("#jobScrim").classList.remove("on"); toast(editingJob ? "Job updated" : "Job added"); } catch(_) {}
