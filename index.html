@@ -1652,7 +1652,7 @@ function openJob(j, preset = {}){
   const opts = (sel) => `<option value="">—</option>` + sortedMembers().map(m => `<option value="${esc(m.id)}" ${m.id === sel ? "selected" : ""}>${esc(m.private ? "You (Administrator)" : m.name)}</option>`).join("");
   const v = j || { client: "", type: "Form C", ya: String(new Date().getFullYear()), refDate: "", dueDate: "", preparerId: preset.preparerId || (ed.find(m => !m.private) || ed[0])?.id || "", reviewerId: "", stage: "todo", notes: "" };
   f.client.value = v.client || ""; f.type.innerHTML = [...new Set(FILINGS.concat(v.type ? [v.type] : []))].map(t => `<option>${esc(t)}</option>`).join(""); f.type.value = v.type || "Form C"; f.ya.value = v.ya || ""; f.refDate.value = v.refDate || ""; f.dueDate.value = v.dueDate || "";
-  f.preparerId.innerHTML = `<option value="">—</option>` + assignOptions(v.preparerId, sortedMembers()); f.reviewerId.innerHTML = `<option value="">—</option>` + assignOptions(v.reviewerId, sortedMembers(), true);
+  f.preparerId.innerHTML = `<option value="">—</option>` + assignOptions(v.preparerId, sortedMembers()); f.reviewerId.innerHTML = `<option value="">—</option>` + assignOptions(v.reviewerId, sortedMembers());
   if (v.reviewerId && !f.reviewerId.querySelector(`option[value="${CSS.escape(v.reviewerId)}"]`)) f.reviewerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.reviewerId)}" selected>${esc(memberName(v.reviewerId))}</option>`);
   if (v.preparerId && !f.preparerId.querySelector(`option[value="${CSS.escape(v.preparerId)}"]`)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
