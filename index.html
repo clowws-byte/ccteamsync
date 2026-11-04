@@ -353,6 +353,8 @@ input.txt{border:1px solid var(--line);border-radius:8px;padding:6px 10px;backgr
 .tsp table.os tr.lv3 td{background:#fde2e4}.tsp table.os tr.lv3 td.st{color:#c81e3a;font-weight:700}.tsp table.os tr.lv2 td{background:#fff4dc}
 .tsp table.os th.grp{background:#ecfdf5;color:#0f766e}.tsp .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;white-space:nowrap}
 .ms-team{display:flex;gap:6px;align-items:center;padding:6px 10px;border-top:1px dashed var(--line);font-size:12.5px;font-weight:700;color:var(--accent)}
+.btag{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;font-weight:700;background:#efeaff;color:#6a55e0;padding:2px 7px;border-radius:7px;white-space:nowrap}
+select.brsel{max-width:150px}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -671,7 +673,8 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <div class="row2" id="accessWrap">
         <label class="fl">Role<select name="access"></select></label>
         <label class="fl">Reports to<select name="managerId"></select></label>
-        <label class="fl" style="grid-column:1/-1">User rights<select name="rights"></select></label>
+        <label class="fl">Branch<select name="branch"></select></label>
+        <label class="fl">User rights<select name="rights"></select></label>
       </div>
       <div class="nudge" id="memPending" style="display:none;margin:0"><b>⏳ Waiting for approval</b>Set their role, who they report to and their rights, then click <b style="display:inline">Save &amp; approve</b>.</div>
       <div class="fl" id="linkWrap" style="font-size:12px;font-weight:500;color:var(--muted)">Linked account<div id="linkInfo" style="font-size:13px;color:var(--ink);font-weight:400"></div></div>
@@ -702,6 +705,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         <label class="fl">Filing / job type<select name="type" id="jobTypeSel"></select></label>
         <label class="fl">Year of assessment<input name="ya" maxlength="4" inputmode="numeric" placeholder="2026"></label>
       </div>
+      <label class="fl">Branch<select name="branch"></select></label>
       <div class="row2">
         <label class="fl" id="refWrap"><span id="refLbl">Financial year end</span><input type="date" name="refDate"></label>
         <label class="fl">Due date<input type="date" name="dueDate"></label>
@@ -829,11 +833,12 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
   <div class="modal" style="max-width:1040px">
     <div class="hd"><h3>📋 Outstanding listing</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
-      <div class="row2" style="grid-template-columns:1.2fr 1fr 1fr 1fr;align-items:end">
+      <div class="row2" style="grid-template-columns:1.3fr 1fr 1fr 1fr 1fr;align-items:end">
         <label class="fl">Staff<select id="osWho"></select><span class="chk" style="font-weight:600;margin-top:4px"><input type="checkbox" id="osTeam" checked> Include the people under them</span></label>
+        <label class="fl">Branch<select id="osBranch"></select></label>
         <label class="fl">Show<select id="osWhat"><option value="both">Jobs and tasks</option><option value="jobs">Outstanding jobs only</option><option value="tasks">Outstanding tasks only</option></select></label>
         <label class="fl">Jobs due up to<input type="date" id="osUpTo"></label>
-        <label class="fl">Group by<select id="osGroup"><option value="none">Due date</option><option value="prep">Preparer</option><option value="type">Job type</option></select></label>
+        <label class="fl">Group by<select id="osGroup"><option value="none">Due date</option><option value="prep">Preparer</option><option value="type">Job type</option><option value="branch">Branch</option></select></label>
       </div>
       <div class="muted" id="osNote" style="font-size:12.5px"></div>
       <div id="osPreview" class="tsp-wrap"></div>
@@ -899,6 +904,13 @@ function supervisorsFor(m, access){
     .sort((a, b) => rank(normAccess(a.access)) - rank(normAccess(b.access)) || String(a.name).localeCompare(b.name));
 }
 const supOptions = (list, sel, access) => (normAccess(access) === "hod" ? `<option value="">— Top level (reports to no one)</option>` : `<option value="">— Not assigned</option>`) + list.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? "selected" : ""}>${esc(x.name)} · ${esc(roleLabel(normAccess(x.access)))}</option>`).join("");
+// ---------- branches ----------
+const BRANCHES = [["KN01","Kuantan"],["KT01","Kuala Terengganu"],["PG01","Penang"],["TP01","Taiping"],["IP01","Ipoh"],["HQ01","Headquarter"],["HQ02","Headquarter"],["HQ03","Headquarter"],
+  ["CS01","Cheras Selatan"],["PI01","Pandan Indah"],["KP01","Kepong"],["NS01","Seremban 1"],["NS02","Seremban 2"],["LK01","Lukut"],["MK01","Melaka"],["BP01","Batu Pahat"],["JB01","Johor Bahru"],["SB01","Sabah"],["LB01","Labuan"]];
+const BRANCH_NAME = Object.fromEntries(BRANCHES);
+const branchLabel = c => c ? `${c} · ${BRANCH_NAME[c] || ""}` : "";
+const branchOptions = (sel, empty = "— Branch —") => `<option value="">${empty}</option>` + BRANCHES.map(([c, n]) => `<option value="${c}" ${sel === c ? "selected" : ""}>${c} · ${n}</option>`).join("");
+const branchTag = c => c ? `<span class="btag" title="${esc(BRANCH_NAME[c] || "")}">${esc(c)}</span>` : "";
 // user rights: view = view only, edit = can edit, full = same as Administrator (except the Administrator's private schedule)
 const RIGHTS = [["view","View only"],["edit","Can edit"],["full","Full access (same as Administrator)"]];
 const rightOf = m => m?.isAdmin ? "full" : m?.canEdit === false ? "view" : "edit";
@@ -948,7 +960,7 @@ async function commit(kind, id, after, opts = {}){
 const FIELDS = {
   items: [["title","Task"],["memberId","Assigned to"],["jobId","Client job"],["date","Date"],["start","Start"],["end","End"],["status","Status"],["category","Type"],["notes","Notes"]],
   jobs: [["client","Client"],["type","Filing"],["ya","YA"],["dueDate","Due"],["preparerId","Preparer"],["reviewerId","Reviewer"],["stage","Stage"],["notes","Notes"]],
-  members: [["name","Name"],["role","Job title"],["userId","Email"],["access","Access"],["managerId","Reports to"],["canEdit","Rights"],["isAdmin","Full access"],["seeTeam","Can see"],["loans","Loans"],["workStart","Hours from"],["workEnd","Hours to"],["private","Private"]],
+  members: [["name","Name"],["role","Job title"],["userId","Email"],["access","Access"],["managerId","Reports to"],["canEdit","Rights"],["isAdmin","Full access"],["branch","Branch"],["seeTeam","Can see"],["loans","Loans"],["workStart","Hours from"],["workEnd","Hours to"],["private","Private"]],
 };
 function fmtVal(k, v){
   if (k === "canEdit" && (v === undefined || v === null)) return "Can edit";
@@ -1483,7 +1495,7 @@ function renderTeam(){
   const pend = state.isOwner ? (state.pendingMembers || []) : [];
   resolveNames(ms.map(m => m.uid).filter(Boolean));
   const me = meMember();
-  $("#members").innerHTML = `<tr><th>Name</th><th>Job title</th><th>Role</th><th>Reports to</th>${state.isOwner?"<th>Linked account</th>":""}<th>Tasks this week</th><th></th></tr>` + pend.map(m => `<tr class="pendrow"><td><div class="who">${avatar(m)}${esc(m.name)} <span class="pill st-blocked" style="background:#fff2d9;color:#b45309">⏳ Waiting approval</span></div></td><td>${esc(m.role||"—")}</td><td><span class="muted">Not set</span></td><td><span class="muted">—</span></td><td><code>${esc(m.userId||"")}</code></td><td class="muted">Requested ${m.requestedAt ? esc(new Date(m.requestedAt).toLocaleDateString("en-GB",{day:"numeric",month:"short"})) : ""}</td>
+  $("#members").innerHTML = `<tr><th>Name</th><th>Branch</th><th>Job title</th><th>Role</th><th>Reports to</th>${state.isOwner?"<th>Linked account</th>":""}<th>Tasks this week</th><th></th></tr>` + pend.map(m => `<tr class="pendrow"><td><div class="who">${avatar(m)}${esc(m.name)} <span class="pill st-blocked" style="background:#fff2d9;color:#b45309">⏳ Waiting approval</span></div></td><td>${branchTag(m.branch) || '<span class="muted">—</span>'}</td><td>${esc(m.role||"—")}</td><td><span class="muted">Not set</span></td><td><span class="muted">—</span></td><td><code>${esc(m.userId||"")}</code></td><td class="muted">Requested ${m.requestedAt ? esc(new Date(m.requestedAt).toLocaleDateString("en-GB",{day:"numeric",month:"short"})) : ""}</td>
       <td><div class="act"><button class="btn primary" data-pend-edit="${esc(m.id)}">Set up &amp; approve</button><button class="btn danger" data-req-no="${esc(m.id)}">Reject</button></div></td></tr>`).join("") + (ms.map(m => {
     const ws = weekStart(new Date()); const days = [...Array(7)].map((_,i)=>ymd(addDays(ws,i)));
     const n = state.items.filter(i => i.memberId===m.id && days.includes(i.date) && i.category!=="leave");
@@ -1491,7 +1503,7 @@ function renderTeam(){
     const ra = normAccess(m.access);
     const access = m.private ? '<span class="pill st-planned">Administrator · private</span>' : `<span class="pill ${isMgmt(ra) ? "st-progress" : "st-planned"}">${esc(roleLabel(ra))}</span>`;
     const linked = m.userId ? `<code>${esc(m.userId)}</code> ${m.uid ? "" : '<span class="muted">(no login)</span>'}` : '<span class="muted">—</span>';
-    return `<tr><td><div class="who">${avatar(m)}${esc(m.name)}${me && m.id===me.id?' <span class="pill st-progress">You</span>':""}</div></td><td>${esc(m.role||"—")}</td><td>${access}</td><td>${mgr ? esc(mgr.name) : '<span class="muted">—</span>'}</td>
+    return `<tr><td><div class="who">${avatar(m)}${esc(m.name)}${me && m.id===me.id?' <span class="pill st-progress">You</span>':""}</div></td><td>${branchTag(m.branch) || '<span class="muted">—</span>'}</td><td>${esc(m.role||"—")}</td><td>${access}</td><td>${mgr ? esc(mgr.name) : '<span class="muted">—</span>'}</td>
       ${state.isOwner?`<td>${linked}</td>`:""}<td>${n.length} · ${hrs(n.reduce((s,i)=>s+dur(i),0))}</td>
       <td><div class="act">${state.isOwner && state.canWrite?`<button class="btn" data-edit-member="${esc(m.id)}">Edit</button>`:""}</div></td></tr>`;
   }).join("") || `<tr><td colspan="7" class="empty">No team members yet. ${state.isOwner?"Click “+ Add member” to start.":""}</td></tr>`);
@@ -1579,9 +1591,9 @@ function jobHours(j){ return state.allItems.filter(i => i.jobId === j.id).reduce
 function filteredJobs(){
   const q = JF.q.trim().toLowerCase();
   return state.jobs.filter(j => (!JF.stage.length || JF.stage.includes(j.stage || "todo")) && inDue(j, JF.due) &&
-      (!JF.type.length || JF.type.includes(j.type)) && (!JF.client.length || JF.client.includes(j.client)) &&
+      (!JF.branch.length || JF.branch.includes(j.branch || "__none")) && (!JF.type.length || JF.type.includes(j.type)) && (!JF.client.length || JF.client.includes(j.client)) &&
       (!JF.prep.length || JF.prep.includes(j.preparerId)) && (!JF.rev.length || JF.rev.includes(j.reviewerId)) && (!JF.ya.length || JF.ya.includes(j.ya)) &&
-      (!q || q.split(/\s+/).every(w => [j.ticket, j.client, j.type, j.ya && "ya" + j.ya, j.ya, j.notes, memberName(j.preparerId), memberName(j.reviewerId), STAGES[j.stage]].join(" ").toLowerCase().includes(w))))
+      (!q || q.split(/\s+/).every(w => [j.ticket, j.branch, BRANCH_NAME[j.branch], j.client, j.type, j.ya && "ya" + j.ya, j.ya, j.notes, memberName(j.preparerId), memberName(j.reviewerId), STAGES[j.stage]].join(" ").toLowerCase().includes(w))))
     .sort((a,b) => (a.stage === "done") - (b.stage === "done") || String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
 }
 function renderJobs(){
@@ -1599,14 +1611,14 @@ function renderJobs(){
   const rows = filteredJobs();
   const nAct = countActive("j");
   $("#addJob").style.display = state.canWrite && editableMembers().length ? "" : "none";
-  $("#jobTable").innerHTML = `<tr><th>Ticket no.</th><th>Client</th><th>Filing</th><th>Due</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
+  $("#jobTable").innerHTML = `<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Filing</th><th>Due</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
     const d = dueInfo(j);
-    return `<tr><td><span class="ticket">${j.ticket ? esc(j.ticket) : `<span class="muted" title="Assigned when saved">…</span>`}</span></td><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
+    return `<tr><td><span class="ticket">${j.ticket ? esc(j.ticket) : `<span class="muted" title="Assigned when saved">…</span>`}</span></td><td>${branchTag(j.branch) || '<span class="muted">—</span>'}</td><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
       <td>${esc(j.type)}${j.ya ? `<div class="muted" style="font-size:12px">YA ${esc(j.ya)}</div>` : ""}</td>
       <td><span class="${d.cls}">${esc(d.text)}</span></td><td>${esc(memberName(j.preparerId))}</td><td>${esc(memberName(j.reviewerId))}</td>
       <td>${stagePill(j.stage)}</td><td>${hrs(jobHours(j))}</td>
       <td><div class="acts">${jobActionsHtml(j)}${canEditJob(j) && j.stage !== "done" ? `<button class="btn" data-job-sched="${esc(j.id)}">+ Schedule work</button>` : ""}</div></td></tr>`;
-  }).join("") || `<tr><td colspan="9" class="empty">${vis.length ? `No jobs match these filters. <button class="linkbtn" data-clear-all="j">Clear filters</button>` : "No client jobs yet — add one to track filings, deadlines and reviews."}</td></tr>`);
+  }).join("") || `<tr><td colspan="10" class="empty">${vis.length ? `No jobs match these filters. <button class="linkbtn" data-clear-all="j">Clear filters</button>` : "No client jobs yet — add one to track filings, deadlines and reviews."}</td></tr>`);
   $("#jobTable").insertAdjacentHTML("beforebegin", ""); const cnt = $("#jobCount"); if (cnt) cnt.textContent = `Showing ${rows.length} of ${vis.length} job${vis.length===1?"":"s"}${nAct ? ` · ${nAct} filter${nAct>1?"s":""} on` : ""}`;
 }
 
@@ -1622,6 +1634,8 @@ function openJob(j, preset = {}){
   if (v.reviewerId && !sortedMembers().some(m => m.id === v.reviewerId)) f.reviewerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.reviewerId)}" selected>${esc(memberName(v.reviewerId))}</option>`);
   if (v.preparerId && !sortedMembers().some(m => m.id === v.preparerId)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
+  f.branch.innerHTML = branchOptions(v.branch || (!j ? (memberById(v.preparerId)?.branch || meMember()?.branch || "") : ""));
+  f.preparerId.onchange = () => { if (!f.branch.value) { const b = memberById(f.preparerId.value)?.branch; if (b) f.branch.value = b; } };
   $("#clientList").innerHTML = [...new Set(state.allJobs.map(x => x.client).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">`).join("");
   $("#jobTitle").textContent = j ? (canEd ? "Edit client job" : "Client job") : "New client job";
   $("#jobTicket").style.display = ""; $("#jobTicket").innerHTML = j?.ticket ? `🎫 Ticket no. <b>${esc(j.ticket)}</b>` : `🎫 Ticket no. <span class="muted">will be given automatically when you save</span>`;
@@ -1690,7 +1704,7 @@ function memberTreeOptions(list){
     (kids[m.id] || []).sort(byRank).forEach(k => walk(k, d + 1)); };
   roots.sort(byRank).forEach(m => walk(m, 0)); return out;
 }                          // schedule views
-const JF = { stage: ["todo","prep","review","changes"], type: [], client: [], prep: [], rev: [], due: [], ya: [], q: "" }; // client jobs
+const JF = { stage: ["todo","prep","review","changes"], branch: [], type: [], client: [], prep: [], rev: [], due: [], ya: [], q: "" }; // client jobs
 const JF_DEFAULT_STAGE = ["todo","prep","review","changes"];
 try { const sv = JSON.parse(localStorage.getItem("ts-filters") || "{}"); if (sv.F) Object.assign(F, sv.F); if (sv.JF) Object.assign(JF, sv.JF); } catch(_) {}
 const saveFilters = () => { try { localStorage.setItem("ts-filters", JSON.stringify({ F, JF })); } catch(_) {} };
@@ -1712,6 +1726,7 @@ function jobOptions(){
   const people = [...new Map(state.jobs.flatMap(j => [j.preparerId, j.reviewerId]).filter(Boolean).map(id => [id, memberName(id)])).entries()].sort((a,b) => a[1].localeCompare(b[1]));
   return {
     stage: Object.entries(STAGES), due: DUE_OPTS,
+    branch: BRANCHES.filter(([c]) => state.jobs.some(j => j.branch === c)).map(([c, n]) => [c, `${c} · ${n}`]).concat(state.jobs.some(j => !j.branch) ? [["__none", "No branch"]] : []),
     type: FILINGS.filter(t => state.jobs.some(j => j.type === t)).map(t => [t, t]),
     client: [...new Set(state.jobs.map(j => j.client).filter(Boolean))].sort().map(c => [c, c]),
     prep: people, rev: people,
@@ -1719,7 +1734,7 @@ function jobOptions(){
   };
 }
 const SCHED_LABELS = { people: "People", status: "Status", type: "Type", job: "Client job" };
-const JOB_LABELS = { stage: "Stage", due: "Due", type: "Filing", client: "Client", prep: "Preparer", rev: "Reviewer", ya: "YA" };
+const JOB_LABELS = { stage: "Stage", branch: "Branch", due: "Due", type: "Filing", client: "Client", prep: "Preparer", rev: "Reviewer", ya: "YA" };
 
 function msHtml(scope, key, label, options, sel){
   const n = sel.length, many = options.length > 8;
@@ -1754,7 +1769,7 @@ function renderSchedBar(){
 }
 function renderJobBar(){
   const o = jobOptions();
-  ["client","prep","rev","ya","type"].forEach(k => JF[k] = JF[k].filter(v => o[k].some(x => x[0] === v)));
+  ["branch","client","prep","rev","ya","type"].forEach(k => JF[k] = JF[k].filter(v => o[k].some(x => x[0] === v)));
   $("#jobMs").innerHTML = Object.keys(JOB_LABELS).map(k => msHtml("j", k, JOB_LABELS[k], o[k], JF[k])).join("");
   if (document.activeElement?.id !== "jobQ") $("#jobQ").value = JF.q;
   $("#jobChips").innerHTML = chipsHtml("j", JF, JOB_LABELS, o);
@@ -2041,29 +2056,30 @@ function openOutstanding(){
   const ms = sortedMembers();
   $("#osWho").innerHTML = `<option value="">Everyone I can see</option>` + memberTreeOptions(ms).map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("");
   if (!isManagerish() && me) $("#osWho").value = me.id;
-  $("#osUpTo").value = ""; $("#osErr").textContent = ""; syncOs(); $("#osScrim").classList.add("on");
+  $("#osBranch").innerHTML = branchOptions("", "All branches"); $("#osUpTo").value = ""; $("#osErr").textContent = ""; syncOs(); $("#osScrim").classList.add("on");
 }
 function osData(){
   const who = $("#osWho").value, what = $("#osWhat").value, upTo = $("#osUpTo").value, group = $("#osGroup").value;
   const set = who ? ($("#osTeam").checked ? teamOf(who) : new Set([who])) : null; const inSet = id => !set || set.has(id);
+  const br = $("#osBranch").value; const inBr = j => !br || j?.branch === br;
   const today = ymd(new Date());
-  const jobs = what === "tasks" ? [] : state.jobs.filter(j => j.stage !== "done" && (inSet(j.preparerId) || inSet(j.reviewerId)) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
+  const jobs = what === "tasks" ? [] : state.jobs.filter(j => j.stage !== "done" && inBr(j) && (inSet(j.preparerId) || inSet(j.reviewerId)) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
     .map(j => { const d = dueInfo(j); const days = j.dueDate ? d.days : null;
-      return { ticket: j.ticket || "", client: j.client || "", type: j.type || "", ya: j.ya || "", due: j.dueDate || "", days,
+      return { ticket: j.ticket || "", branch: j.branch || "", client: j.client || "", type: j.type || "", ya: j.ya || "", due: j.dueDate || "", days,
         status: !j.dueDate ? "No due date" : days < 0 ? `Overdue ${-days} day${days === -1 ? "" : "s"}` : days === 0 ? "Due today" : days <= 7 ? `Due in ${days} day${days === 1 ? "" : "s"}` : `${days} days left`,
         level: !j.dueDate ? 0 : days <= 0 ? 3 : days <= 7 ? 2 : 1,
         stage: STAGES[j.stage] || STAGES.todo, prep: memberName(j.preparerId) || "—", rev: memberName(j.reviewerId) || "—", hours: round1(jobHours(j) / 60), notes: j.notes || "" }; })
     .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.client.localeCompare(b.client));
-  const tasks = what === "jobs" ? [] : state.items.filter(i => i.category !== "leave" && i.category !== "meeting" && i.status !== "done" && i.date <= today && inSet(i.memberId))
+  const tasks = what === "jobs" ? [] : state.items.filter(i => i.category !== "leave" && i.category !== "meeting" && i.status !== "done" && i.date <= today && inSet(i.memberId) && (!br || inBr(jobById(i.jobId)) || (!i.jobId && memberById(i.memberId)?.branch === br)))
     .map(i => { const j = jobById(i.jobId); const age = Math.round((parse(today) - parse(i.date)) / 864e5);
       return { date: i.date, age, staff: memberName(i.memberId), task: i.title || "", client: j ? j.client : "", ticket: j?.ticket || "", status: STATUS[i.status] || i.status, notes: i.notes || "" }; })
     .sort((a, b) => a.date.localeCompare(b.date) || a.staff.localeCompare(b.staff));
   const groups = [];
   if (group === "none") groups.push({ title: "", rows: jobs });
-  else { const key = group === "prep" ? "prep" : "type"; const names = [...new Set(jobs.map(r => r[key]))].sort((a, b) => a.localeCompare(b));
-    names.forEach(n => groups.push({ title: (group === "prep" ? "Preparer: " : "Job type: ") + n, rows: jobs.filter(r => r[key] === n) })); }
+  else { const key = group; const names = [...new Set(jobs.map(r => r[key]))].sort((a, b) => a.localeCompare(b));
+    names.forEach(n => groups.push({ title: (group === "prep" ? "Preparer: " : group === "branch" ? "Branch: " : "Job type: ") + (group === "branch" ? (n ? branchLabel(n) : "No branch") : n), rows: jobs.filter(r => r[key] === n) })); }
   const whoName = who ? (memberById(who)?.private ? "Administrator" : memberName(who)) + ($("#osTeam").checked && treeBelow(who).size ? " and team" : "") : "All staff";
-  return { who: whoName, today, upTo, jobs, groups, tasks, what,
+  return { who: whoName + (br ? ` · ${branchLabel(br)}` : ""), today, upTo, jobs, groups, tasks, what,
     counts: { open: jobs.length, overdue: jobs.filter(r => r.days !== null && r.days < 0).length, week: jobs.filter(r => r.days !== null && r.days >= 0 && r.days <= 7).length, review: jobs.filter(r => r.stage === STAGES.review).length, tasks: tasks.length } };
 }
 function syncOs(){
@@ -2074,9 +2090,9 @@ function syncOs(){
 const osDmy = ds => ds ? ds.split("-").reverse().join("/") : "";
 function osPreviewHtml(d){
   const c = d.counts;
-  const jobTable = g => `<table class="os"><colgroup><col style="width:12.5%"><col style="width:17%"><col style="width:11%"><col style="width:5%"><col style="width:9%"><col style="width:10%"><col style="width:9.5%"><col style="width:10%"><col style="width:10%"><col style="width:6%"></colgroup>
-    <thead>${g.title ? `<tr><th colspan="10" class="l grp">${esc(g.title)} · ${g.rows.length}</th></tr>` : ""}<tr><th>Ticket no.</th><th>Client</th><th>Job type</th><th>YA</th><th>Due date</th><th>Status</th><th>Stage</th><th>Preparer</th><th>Reviewer</th><th>Hours</th></tr></thead>
-    <tbody>${g.rows.map(r => `<tr class="lv${r.level}"><td class="c mono">${esc(r.ticket)}</td><td>${esc(r.client)}${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ""}</td><td>${esc(r.type)}</td><td class="c">${esc(r.ya)}</td><td class="c">${osDmy(r.due)}</td><td class="st">${esc(r.status)}</td><td>${esc(r.stage)}</td><td>${esc(r.prep)}</td><td>${esc(r.rev)}</td><td class="c">${r.hours || ""}</td></tr>`).join("") || `<tr><td colspan="10" class="c muted">No outstanding jobs 🎉</td></tr>`}</tbody></table>`;
+  const jobTable = g => `<table class="os"><colgroup><col style="width:12%"><col style="width:6%"><col style="width:15%"><col style="width:10%"><col style="width:5%"><col style="width:9%"><col style="width:10%"><col style="width:9%"><col style="width:9.5%"><col style="width:9.5%"><col style="width:5%"></colgroup>
+    <thead>${g.title ? `<tr><th colspan="11" class="l grp">${esc(g.title)} · ${g.rows.length}</th></tr>` : ""}<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Job type</th><th>YA</th><th>Due date</th><th>Status</th><th>Stage</th><th>Preparer</th><th>Reviewer</th><th>Hours</th></tr></thead>
+    <tbody>${g.rows.map(r => `<tr class="lv${r.level}"><td class="c mono">${esc(r.ticket)}</td><td class="c">${esc(r.branch)}</td><td>${esc(r.client)}${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ""}</td><td>${esc(r.type)}</td><td class="c">${esc(r.ya)}</td><td class="c">${osDmy(r.due)}</td><td class="st">${esc(r.status)}</td><td>${esc(r.stage)}</td><td>${esc(r.prep)}</td><td>${esc(r.rev)}</td><td class="c">${r.hours || ""}</td></tr>`).join("") || `<tr><td colspan="11" class="c muted">No outstanding jobs 🎉</td></tr>`}</tbody></table>`;
   return `<div class="tsp">
     <div class="tsp-t">Outstanding Listing</div>
     <div class="tsp-meta"><b>Staff:</b> ${esc(d.who)} &nbsp;·&nbsp; <b>As at:</b> ${osDmy(d.today)}${d.upTo ? ` &nbsp;·&nbsp; <b>Jobs due up to:</b> ${osDmy(d.upTo)}` : ""}</div>
@@ -2091,26 +2107,26 @@ async function osXlsx(d){
   const wb = new X.Workbook(); wb.creator = "CCTeamSync";
   const ws = wb.addWorksheet("Outstanding", { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true, margins: { left: .3, right: .3, top: .5, bottom: .5, header: .2, footer: .2 } },
     headerFooter: { oddFooter: `&L&8Outstanding listing · ${d.who} · as at ${osDmy(d.today)}&R&8Page &P of &N` }, views: [{ showGridLines: false }] });
-  ws.columns = [16, 30, 20, 7, 12, 18, 18, 18, 18, 8, 36].map(w => ({ width: w }));
+  ws.columns = [16, 30, 20, 7, 12, 18, 18, 18, 18, 8, 9, 36].map(w => ({ width: w }));
   const thin = { style: "thin", color: { argb: "FF9AA5B1" } }; const box = { top: thin, left: thin, bottom: thin, right: thin };
   const head = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDAEDF3" } };
   const fills = { 3: "FFFDE2E4", 2: "FFFFF4DC" };
   let r = 1;
-  ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: "Outstanding Listing", font: { name: "Arial", size: 14, bold: true, underline: true } }); r++;
-  ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Jobs due up to: ${osDmy(d.upTo)}` : ""}`, font: { name: "Arial", size: 10, bold: true } }); r++;
-  ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${d.counts.open} outstanding jobs · ${d.counts.overdue} overdue · ${d.counts.week} due within 7 days · ${d.counts.review} in review · ${d.counts.tasks} tasks not done`, font: { name: "Arial", size: 10, color: { argb: "FF4B5563" } } }); r += 2;
+  ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: "Outstanding Listing", font: { name: "Arial", size: 14, bold: true, underline: true } }); r++;
+  ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Jobs due up to: ${osDmy(d.upTo)}` : ""}`, font: { name: "Arial", size: 10, bold: true } }); r++;
+  ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${d.counts.open} outstanding jobs · ${d.counts.overdue} overdue · ${d.counts.week} due within 7 days · ${d.counts.review} in review · ${d.counts.tasks} tasks not done`, font: { name: "Arial", size: 10, color: { argb: "FF4B5563" } } }); r += 2;
   const headerRow = cols => { cols.forEach((t, k) => { const c = ws.getCell(r, k + 1); c.value = t; c.font = { name: "Arial", size: 10, bold: true }; c.fill = head; c.border = box; c.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; }); ws.getRow(r).height = 18; r++; };
   const serial = ds => { const [y, m, dd] = ds.split("-").map(Number); return (Date.UTC(y, m - 1, dd) - Date.UTC(1899, 11, 30)) / 864e5; };
   if (d.what !== "tasks") {
-    ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: "A. Outstanding client jobs", font: { name: "Arial", size: 11, bold: true } }); r++;
+    ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: "A. Outstanding client jobs", font: { name: "Arial", size: 11, bold: true } }); r++;
     for (const g of d.groups) {
-      if (g.title) { ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${g.title} · ${g.rows.length}`, font: { name: "Arial", size: 10, bold: true, color: { argb: "FF0F766E" } } }); r++; }
-      headerRow(["Ticket no.", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours", "Notes"]);
-      if (!g.rows.length) { ws.mergeCells(`A${r}:K${r}`); ws.getCell(`A${r}`).value = "No outstanding jobs"; r++; }
+      if (g.title) { ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${g.title} · ${g.rows.length}`, font: { name: "Arial", size: 10, bold: true, color: { argb: "FF0F766E" } } }); r++; }
+      headerRow(["Ticket no.", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours", "Branch", "Notes"]);
+      if (!g.rows.length) { ws.mergeCells(`A${r}:L${r}`); ws.getCell(`A${r}`).value = "No outstanding jobs"; r++; }
       for (const x of g.rows) {
-        const vals = [x.ticket, x.client, x.type, x.ya, x.due ? serial(x.due) : "", x.status, x.stage, x.prep, x.rev, x.hours || "", x.notes];
+        const vals = [x.ticket, x.client, x.type, x.ya, x.due ? serial(x.due) : "", x.status, x.stage, x.prep, x.rev, x.hours || "", x.branch, x.notes];
         vals.forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.border = box; c.font = { name: "Arial", size: 10, bold: k === 5 && x.level === 3, color: k === 5 && x.level === 3 ? { argb: "FFC81E3A" } : undefined };
-          c.alignment = { vertical: "top", wrapText: k === 1 || k === 10, horizontal: [0, 3, 4, 9].includes(k) ? "center" : "left" };
+          c.alignment = { vertical: "top", wrapText: k === 1 || k === 11, horizontal: [0, 3, 4, 9, 10].includes(k) ? "center" : "left" };
           if (fills[x.level]) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fills[x.level] } }; });
         ws.getCell(r, 5).numFmt = "dd/mm/yyyy"; r++;
       }
@@ -2118,7 +2134,7 @@ async function osXlsx(d){
     }
   }
   if (d.what !== "jobs") {
-    ws.mergeCells(`A${r}:K${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${d.what === "tasks" ? "" : "B. "}Tasks not marked done (up to today)`, font: { name: "Arial", size: 11, bold: true } }); r++;
+    ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${d.what === "tasks" ? "" : "B. "}Tasks not marked done (up to today)`, font: { name: "Arial", size: 11, bold: true } }); r++;
     headerRow(["Date", "Task", "Client", "Days", "Status", "Ticket no.", "Staff", "Notes"]);
     if (!d.tasks.length) { ws.mergeCells(`A${r}:H${r}`); ws.getCell(`A${r}`).value = "Nothing outstanding"; r++; }
     for (const t of d.tasks) {
@@ -2144,11 +2160,11 @@ function osPdf(J, d){
     title("A. Outstanding client jobs");
     for (const g of d.groups) {
       if (g.title) title(`${g.title} · ${g.rows.length}`, 9.5, [15, 118, 110]);
-      doc.autoTable({ ...base, startY: y, head: [["Ticket no.", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours"]],
-        body: g.rows.length ? g.rows.map(x => [x.ticket, x.client + (x.notes ? "\n" + x.notes : ""), x.type, x.ya, osDmy(x.due), x.status, x.stage, x.prep, x.rev, x.hours || ""]) : [[{ content: "No outstanding jobs", colSpan: 10, styles: { halign: "center", textColor: [107, 114, 128] } }]],
-        columnStyles: { 0: { cellWidth: 70, halign: "center" }, 1: { cellWidth: 150 }, 3: { cellWidth: 30, halign: "center" }, 4: { cellWidth: 56, halign: "center" }, 9: { cellWidth: 36, halign: "center" } },
+      doc.autoTable({ ...base, startY: y, head: [["Ticket no.", "Branch", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours"]],
+        body: g.rows.length ? g.rows.map(x => [x.ticket, x.branch, x.client + (x.notes ? "\n" + x.notes : ""), x.type, x.ya, osDmy(x.due), x.status, x.stage, x.prep, x.rev, x.hours || ""]) : [[{ content: "No outstanding jobs", colSpan: 11, styles: { halign: "center", textColor: [107, 114, 128] } }]],
+        columnStyles: { 0: { cellWidth: 72, halign: "center" }, 1: { cellWidth: 38, halign: "center" }, 2: { cellWidth: 140 }, 4: { cellWidth: 30, halign: "center" }, 5: { cellWidth: 56, halign: "center" }, 10: { cellWidth: 34, halign: "center" } },
         didParseCell: h => { if (h.section !== "body" || !g.rows[h.row.index]) return; const lv = g.rows[h.row.index].level;
-          if (lv === 3) { h.cell.styles.fillColor = [253, 226, 228]; if (h.column.index === 5) { h.cell.styles.textColor = [200, 30, 58]; h.cell.styles.fontStyle = "bold"; } } else if (lv === 2) h.cell.styles.fillColor = [255, 244, 220]; } });
+          if (lv === 3) { h.cell.styles.fillColor = [253, 226, 228]; if (h.column.index === 6) { h.cell.styles.textColor = [200, 30, 58]; h.cell.styles.fontStyle = "bold"; } } else if (lv === 2) h.cell.styles.fillColor = [255, 244, 220]; } });
       y = doc.lastAutoTable.finalY + 12;
     }
   }
@@ -2170,7 +2186,7 @@ async function downloadOutstanding(kind){
     let buf;
     if (kind === "pdf") { let J; try { J = await loadJsPDF(); } catch (_) { throw new Error("Couldn't load the PDF tools — check your connection and try again"); } buf = osPdf(J, d); }
     else { try { buf = await osXlsx(d); } catch (e) { if (String(e.message) === "load") throw new Error("Couldn't load the Excel tools — check your connection and try again"); throw e; } }
-    const who = d.who === "All staff" ? "All staff" : d.who;
+    const who = d.who.replace(/ · .*$/, "") + ($("#osBranch").value ? " " + $("#osBranch").value : "");
     await downloadsApi.save({ filename: `Outstanding listing - ${who} - ${osDmy(d.today).replace(/\//g, "-")}.${kind === "pdf" ? "pdf" : "xlsx"}`, data: new Uint8Array(buf) });
     toast(kind === "pdf" ? "Outstanding list PDF downloaded" : "Outstanding list Excel downloaded");
   } catch (e) { if (e?.code === "declined") return; $("#osErr").textContent = e.message || "Couldn't create the file."; }
@@ -2274,11 +2290,11 @@ async function exportJobs(due){
   const list = filteredJobs().filter(j => !due || (j.dueDate && j.dueDate >= due[0] && j.dueDate <= due[1]));
   if (!list.length) { toast(due ? "No jobs are due between those dates" : "No jobs match the current filter"); return; }
   const today = ymd(new Date());
-  const head = ["Ticket no.","Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Filed / done on","Notes"];
+  const head = ["Ticket no.","Branch","Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Filed / done on","Notes"];
   const rows = [head];
   list.forEach(j => { const d = dueInfo(j); const tasks = state.items.filter(i => i.jobId === j.id);
     const st = j.stage === "done" ? "Filed" : !j.dueDate ? "" : d.days < 0 ? "Overdue" : d.days === 0 ? "Due today" : d.days <= 7 ? "Due within 7 days" : "On track";
-    rows.push([j.ticket || "", j.client, j.type, j.ya || "", j.refDate ? xlDate(j.refDate) : "", j.dueDate ? xlDate(j.dueDate) : "", j.stage === "done" || !j.dueDate ? "" : d.days, st, STAGES[j.stage] || STAGES.todo, memberName(j.preparerId), memberName(j.reviewerId), round1(jobHours(j) / 60), tasks.length, j.doneAt ? xlDate(j.doneAt) : "", j.notes || ""]); });
+    rows.push([j.ticket || "", j.branch ? branchLabel(j.branch) : "", j.client, j.type, j.ya || "", j.refDate ? xlDate(j.refDate) : "", j.dueDate ? xlDate(j.dueDate) : "", j.stage === "done" || !j.dueDate ? "" : d.days, st, STAGES[j.stage] || STAGES.todo, memberName(j.preparerId), memberName(j.reviewerId), round1(jobHours(j) / 60), tasks.length, j.doneAt ? xlDate(j.doneAt) : "", j.notes || ""]); });
   const work = [["Ticket no.","Client","Filing","Date","Day","Start","End","Hours","Team member","Task","Status"]];
   list.forEach(j => state.items.filter(i => i.jobId === j.id).sort((a,b) => (a.date + a.start).localeCompare(b.date + b.start))
     .forEach(i => work.push([j.ticket || "", j.client, j.type, xlDate(i.date), dayName(i.date), i.start, i.end, round1(dur(i)/60), memberName(i.memberId), i.title, STATUS[i.status] || i.status])));
@@ -2290,7 +2306,7 @@ async function exportJobs(due){
   ppl.forEach(id => sum.push([memberName(id), list.filter(j => j.preparerId === id && j.stage !== "done").length, list.filter(j => j.reviewerId === id && j.stage !== "done").length, list.filter(j => j.preparerId === id && j.stage === "done").length]));
   const f = filterSummary("j");
   await saveWorkbook(due ? `Client jobs due ${due[0]} to ${due[1]}.xlsx` : `Client jobs ${today}.xlsx`, [
-    { name: "Client jobs", rows, cols: [14,28,18,6,14,12,9,16,16,18,18,10,7,12,40], dateCols: [4,5,13], numCols: [11] },
+    { name: "Client jobs", rows, cols: [14,18,28,18,6,14,12,9,16,16,18,18,10,7,12,40], dateCols: [5,6,14], numCols: [12] },
     { name: "Scheduled work", rows: work, cols: [14,28,18,12,6,7,7,7,18,36,12], dateCols: [3], numCols: [7] },
     { name: "Summary", rows: sum, cols: [22,16,16,10], filter: false },
     { name: "About", rows: [["CCTeamSync — client jobs export"], ["Filter", f || "All"], ["Due dates", due ? `${niceDate(due[0])} – ${niceDate(due[1])}` : "All"], ["Jobs", list.length], ["Exported", new Date().toLocaleString("en-GB")], ["Exported by", meMember()?.name || (state.isOwner ? "Administrator" : "")], ["Note", "Due dates suggested by the app follow LHDN rules; verify against the latest filing programme."]], cols: [14, 60], filter: false },
@@ -2475,14 +2491,15 @@ function renderAdmin(){
   const rows = all.filter(m => !q || [m.name, m.role, state.names[m.uid]].join(" ").toLowerCase().includes(q));
   const selectable = rows.filter(m => !m.private);
   const allSel = selectable.length && selectable.every(m => admSel.has(m.id));
-  $("#admTable").innerHTML = `<tr><th style="width:28px"><input type="checkbox" data-adm-all ${allSel?"checked":""} aria-label="Select all"></th><th>User</th><th>Role</th><th>Reports to</th><th>Rights</th><th>Can see</th><th>Sign-in</th><th>Login</th><th></th></tr>` + (rows.map(m => {
+  $("#admTable").innerHTML = `<tr><th style="width:28px"><input type="checkbox" data-adm-all ${allSel?"checked":""} aria-label="Select all"></th><th>User</th><th>Branch</th><th>Role</th><th>Reports to</th><th>Rights</th><th>Can see</th><th>Sign-in</th><th>Login</th><th></th></tr>` + (rows.map(m => {
     if (m.private) return `<tr><td></td><td><div class="who">${avatar(m)}<div>${esc(m.name)}<div class="muted" style="font-size:12px">${esc(m.role||"")}</div></div></div></td>
-      <td colspan="4"><span class="pill st-planned">Private — only you can see this schedule</span></td><td>${m.userId ? `<code>${esc(m.userId)}</code>` : `<span class="muted">No email yet</span>`}</td><td></td><td><div class="acts"><button class="btn" data-edit-member="${esc(m.id)}">Edit</button></div></td></tr>`;
+      <td colspan="5"><span class="pill st-planned">Private — only you can see this schedule</span></td><td>${m.userId ? `<code>${esc(m.userId)}</code>` : `<span class="muted">No email yet</span>`}</td><td></td><td><div class="acts"><button class="btn" data-edit-member="${esc(m.id)}">Edit</button></div></td></tr>`;
     const isHod = normAccess(m.access) === "hod";
     const mgrOpts = isHod ? `<option value="">— Top level</option>` : supOptions(supervisorsFor(m).filter(x => normAccess(x.access) !== "director"), m.managerId, m.access);
     const nReports = shared.filter(x => x.managerId === m.id).length;
     return `<tr class="${admSel.has(m.id)?"sel":""}"><td><input type="checkbox" data-adm-sel="${esc(m.id)}" ${admSel.has(m.id)?"checked":""} aria-label="Select ${esc(m.name)}"></td>
       <td><div class="who">${avatar(m)}<div>${esc(m.name)}<div class="muted" style="font-size:12px">${esc(m.role||"—")}${nReports ? ` · ${nReports} report${nReports===1?"":"s"}` : ""}</div></div></div></td>
+      <td><select data-adm="branch" data-id="${esc(m.id)}" class="brsel">${branchOptions(m.branch, "—")}</select></td>
       <td><select data-adm="access" data-id="${esc(m.id)}">${roleOptions(m.access)}</select></td>
       <td><select data-adm="managerId" data-id="${esc(m.id)}" ${isHod ? `disabled title="Head of Division is the top level and reports to no one"` : ""}>${mgrOpts}</select>${!isHod && !m.managerId ? `<div class="loantag" style="color:var(--warn,#b45309)">No manager assigned</div>` : ""}${activeLoans(m).map(l => `<div class="loantag">On loan to ${esc(memberName(l.managerId))} until ${esc(parse(l.to).toLocaleDateString(undefined,{day:"numeric",month:"short"}))}</div>`).join("")}</td>
       <td><select data-adm="rights" data-id="${esc(m.id)}">${rightOptions(rightOf(m))}</select></td>
@@ -2490,11 +2507,12 @@ function renderAdmin(){
       <td>${m.userId ? `<code>${esc(m.userId)}</code>` : `<span class="muted">No email yet</span>`}<div style="margin-top:3px">${pwStatus(m)}</div></td>
       <td>${m.uid ? '<span class="pill st-done">Can sign in</span>' : '<span class="muted">No login</span>'}</td>
       <td><div class="acts"><button class="btn" data-edit-member="${esc(m.id)}">Edit</button>${!isMgmt(normAccess(m.access)) ? `<button class="btn" data-adm-lend="${esc(m.id)}">Lend</button>` : ""}<button class="btn" data-adm-reset="${esc(m.id)}" title="Back to Associate · Can edit · Own + team">Reset role</button>${m.uid?`<button class="btn" data-adm-unlink="${esc(m.id)}">Remove login</button>`:""}<button class="btn ${m.uid ? "" : "primary"}" data-adm-temp="${esc(m.id)}">${m.uid ? "Reset password" : "Create login"}</button><button class="btn danger" data-adm-remove="${esc(m.id)}">Remove</button></div></td></tr>`;
-  }).join("") || `<tr><td colspan="9" class="empty">${state.allMembers.length ? "No users match the search" : "No users yet — click “+ Add user”."}</td></tr>`);
+  }).join("") || `<tr><td colspan="10" class="empty">${state.allMembers.length ? "No users match the search" : "No users yet — click “+ Add user”."}</td></tr>`);
   const n = admSel.size;
   $("#admBulk").className = "admbulk" + (n ? " on" : "");
   $("#admBulk").innerHTML = n ? `<b>${n} selected</b>
     <select class="f" data-adm-bulk="access"><option value="">Set role…</option>${roleOptions("__none")}</select>
+    <select class="f" data-adm-bulk="branch"><option value="__">Branch…</option>${branchOptions("__none", "— No branch")}</select>
     <select class="f" data-adm-bulk="managerId"><option value="__">Reports to…</option><option value="">— Not assigned</option>${shared.filter(x => rank(normAccess(x.access)) < 5).sort((a,b) => rank(normAccess(a.access)) - rank(normAccess(b.access))).map(x => `<option value="${esc(x.id)}">${esc(x.name)} · ${esc(roleLabel(normAccess(x.access)))}</option>`).join("")}</select>
     <select class="f" data-adm-bulk="rights"><option value="">Rights…</option>${rightOptions("")}</select>
     <button class="btn" data-adm-bulkreset>Reset role</button><button class="btn" data-adm-bulkunlink>Remove logins</button><button class="btn danger" data-adm-bulkremove>Remove</button>
@@ -2694,6 +2712,7 @@ function openMember(m){
   const fillSup = () => { const hod = f.access.value === "hod"; const list = hod ? [] : supervisorsFor(m, f.access.value); const keep = f.managerId.value || m?.managerId;
     f.managerId.innerHTML = supOptions(list, keep, f.access.value); f.managerId.value = list.some(x => x.id === keep) ? keep : ""; f.managerId.disabled = hod; };
   f.rights.innerHTML = rightOptions(m ? rightOf(m) : roleRights()[f.access.value] || "edit");
+  f.branch.innerHTML = branchOptions(m?.branch || (m ? "" : meMember()?.branch || ""));
   fillSup(); f.access.onchange = () => { fillSup(); f.rights.value = roleRights()[f.access.value] || "edit"; };
   const pend = !!m?.pending; $("#memPending").style.display = pend ? "" : "none"; $("#memReject").style.display = pend ? "" : "none";
   $("#memSave").textContent = pend ? "Save & approve" : "Save"; $("#privWrap").style.display = pend || (state.isOwner && !state.isMain) ? "none" : "";
@@ -2720,7 +2739,7 @@ $("#memForm").addEventListener("submit", async e => {
   const data = { name: f.name.value.trim(), role: f.role.value.trim(), workStart: f.workStart.value || "09:00", workEnd: f.workEnd.value || "18:00", color: pickedColor,
     order: editingMember?.order ?? (priv ? -1 : Math.max(0, ...state.allMembers.map(m=>m.order||0)) + 1),
     access: priv ? "director" : f.access.value, managerId: (priv || f.access.value === "hod") ? null : (f.managerId.value || null), uid: priv ? null : (editingMember?.uid || null), private: priv,
-    ...(priv ? { canEdit: true, isAdmin: false } : rightPatch(f.rights.value)), seeTeam: editingMember?.seeTeam !== false, userId: userId || null };
+    ...(priv ? { canEdit: true, isAdmin: false } : rightPatch(f.rights.value)), seeTeam: editingMember?.seeTeam !== false, userId: userId || null, branch: f.branch.value || null };
   if (!data.name) return $("#memErr").textContent = "Enter a name.";
   if (mins(data.workEnd) <= mins(data.workStart)) return $("#memErr").textContent = "Working hours end must be after start.";
   if (editingMember?.demo) data.demo = true;
@@ -2830,9 +2849,10 @@ $("#jobForm").refDate.addEventListener("change", () => { const f = $("#jobForm")
 $("#jobForm").addEventListener("submit", async e => {
   e.preventDefault(); const f = e.target;
   const data = { client: f.client.value.trim(), type: f.type.value, ya: f.ya.value.trim(), refDate: refLabel(f.type.value) ? f.refDate.value : "", dueDate: f.dueDate.value,
-    preparerId: f.preparerId.value || null, reviewerId: f.reviewerId.value || null, stage: f.stage.value, notes: f.notes.value.trim(), updatedAt: Date.now() };
+    preparerId: f.preparerId.value || null, reviewerId: f.reviewerId.value || null, stage: f.stage.value, notes: f.notes.value.trim(), branch: f.branch.value || null, updatedAt: Date.now() };
   $("#jobErr").style.color = "";
   if (!data.client) return $("#jobErr").textContent = "Enter the client's name.";
+  if (!data.branch) return $("#jobErr").textContent = "Choose the branch for this job.";
   if (!data.dueDate) return $("#jobErr").textContent = "Set a due date (use the suggested statutory date if it applies).";
   if (data.preparerId && data.preparerId === data.reviewerId) return $("#jobErr").textContent = "The reviewer should be a different person from the preparer.";
   if (!state.isOwner && data.preparerId && !canEditFor(data.preparerId) && !canEditFor(data.reviewerId)) return $("#jobErr").textContent = "You can only create jobs for people you manage.";
@@ -2857,7 +2877,7 @@ document.addEventListener("change", e => {
   const t = e.target;
   if (t.matches("[data-adm]")) {
     const id = t.dataset.id, f = t.dataset.adm, v = t.value;
-    const patch = f === "access" ? { access: v, ...rightPatch(roleRights()[v] || "edit") } : f === "managerId" ? { managerId: v || null } : f === "rights" ? rightPatch(v) : { seeTeam: v === "1" };
+    const patch = f === "access" ? { access: v, ...rightPatch(roleRights()[v] || "edit") } : f === "managerId" ? { managerId: v || null } : f === "rights" ? rightPatch(v) : f === "branch" ? { branch: v || null } : { seeTeam: v === "1" };
     const m = state.allMembers.find(x => x.id === id);
     const warn = f === "access" ? reportsWarning([id], v) : "";
     admApply([id], () => patch, warn ? { confirmText: { title: `Change ${m.name} to ${roleLabel(v)}?`, text: `Some of their reports would no longer rank below them.${warn}` }, yes: "Change" } : {});
@@ -2873,10 +2893,10 @@ document.addEventListener("change", e => {
     const r = document.querySelector(`[data-req-rights="${CSS.escape(t.dataset.reqRole)}"]`); if (r) r.value = roleRights()[t.value] || "edit";
   } else if (t.matches("[data-adm-bulk]")) {
     const f = t.dataset.admBulk, v = t.value;
-    if ((f !== "managerId" && v === "") || (f === "managerId" && v === "__")) return;
+    if ((f !== "managerId" && f !== "branch" && v === "") || ((f === "managerId" || f === "branch") && v === "__")) return;
     const ids = [...admSel];
-    const patch = f === "access" ? { access: v, ...rightPatch(roleRights()[v] || "edit") } : f === "managerId" ? { managerId: v || null } : rightPatch(v);
-    const label = f === "access" ? roleLabel(v) : f === "managerId" ? (v ? `reports to ${state.allMembers.find(m => m.id === v)?.name}` : "no manager assigned") : Object.fromEntries(RIGHTS)[v];
+    const patch = f === "access" ? { access: v, ...rightPatch(roleRights()[v] || "edit") } : f === "managerId" ? { managerId: v || null } : f === "branch" ? { branch: v || null } : rightPatch(v);
+    const label = f === "branch" ? (v ? `branch ${branchLabel(v)}` : "no branch") : f === "access" ? roleLabel(v) : f === "managerId" ? (v ? `reports to ${state.allMembers.find(m => m.id === v)?.name}` : "no manager assigned") : Object.fromEntries(RIGHTS)[v];
     admApply(ids, () => ({ ...patch }), { confirmText: { title: `Update ${ids.length} user${ids.length>1?"s":""}?`, text: `Set ${ids.length > 1 ? "them" : "this user"} to: ${label}.${f === "access" ? reportsWarning(ids, v) : ""}` }, yes: "Apply" });
   }
 });
@@ -2890,7 +2910,7 @@ const step = dir => { const d = new Date(state.date);
   state.date = d; render(); };
 ["xpFrom","xpTo","xpAll"].forEach(id => $("#" + id).addEventListener("change", () => { if (id !== "xpAll") $("#xpAll").checked = false; syncXp(); }));
 ["tsWho","tsWeek"].forEach(id => $("#" + id).addEventListener("change", syncTs));
-["osWho","osWhat","osUpTo","osGroup","osTeam"].forEach(id => $("#" + id).addEventListener("change", syncOs));
+["osWho","osBranch","osWhat","osUpTo","osGroup","osTeam"].forEach(id => $("#" + id).addEventListener("change", syncOs));
 $("#tlFrom").addEventListener("change", setTlRange); $("#tlTo").addEventListener("change", setTlRange);
 $("#tlRangeClear").addEventListener("click", () => { state.tlRange = null; render(); });
 $("#tlMonth").addEventListener("change", pickTlMonth); $("#tlYear").addEventListener("change", pickTlMonth);
