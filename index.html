@@ -875,9 +875,10 @@ const STATUS = {planned:"Planned",progress:"In progress",done:"Done",blocked:"Bl
 // who may do what: Administrator / Full access → delete; managers (HOD, Senior Manager, Manager) → cancel; everyone → edit
 const canDeleteWork = () => !!state.isOwner;
 // everyone you can assign work to: your own people first, then the rest of the firm (names only)
-function assignOptions(sel, mine){
+function assignOptions(sel, mine, allowAdmin = false){
   const mineIds = new Set(mine.map(m => m.id));
-  const others = (state.directory || []).filter(d => !mineIds.has(d.id)).sort((a, b) => String(a.name).localeCompare(b.name));
+  const others = (state.directory || []).filter(d => !mineIds.has(d.id) && (allowAdmin || d.access !== "director"))
+    .sort((a, b) => (b.access === "director") - (a.access === "director") || String(a.name).localeCompare(b.name));
   const lab = (n, b) => `${n}${b ? " · " + b : ""}`;
   return `<optgroup label="My team">${mine.map(m => `<option value="${esc(m.id)}" ${m.id === sel ? "selected" : ""}>${esc(m.private ? "You (Administrator)" : lab(m.name, m.branch))}</option>`).join("")}</optgroup>`
     + (others.length ? `<optgroup label="Other people">${others.map(d => `<option value="${esc(d.id)}" ${d.id === sel ? "selected" : ""}>${esc(lab(d.name, d.branch))}</option>`).join("")}</optgroup>` : "");
@@ -1651,7 +1652,7 @@ function openJob(j, preset = {}){
   const opts = (sel) => `<option value="">—</option>` + sortedMembers().map(m => `<option value="${esc(m.id)}" ${m.id === sel ? "selected" : ""}>${esc(m.private ? "You (Administrator)" : m.name)}</option>`).join("");
   const v = j || { client: "", type: "Form C", ya: String(new Date().getFullYear()), refDate: "", dueDate: "", preparerId: preset.preparerId || (ed.find(m => !m.private) || ed[0])?.id || "", reviewerId: "", stage: "todo", notes: "" };
   f.client.value = v.client || ""; f.type.innerHTML = [...new Set(FILINGS.concat(v.type ? [v.type] : []))].map(t => `<option>${esc(t)}</option>`).join(""); f.type.value = v.type || "Form C"; f.ya.value = v.ya || ""; f.refDate.value = v.refDate || ""; f.dueDate.value = v.dueDate || "";
-  f.preparerId.innerHTML = `<option value="">—</option>` + assignOptions(v.preparerId, sortedMembers()); f.reviewerId.innerHTML = `<option value="">—</option>` + assignOptions(v.reviewerId, sortedMembers());
+  f.preparerId.innerHTML = `<option value="">—</option>` + assignOptions(v.preparerId, sortedMembers()); f.reviewerId.innerHTML = `<option value="">—</option>` + assignOptions(v.reviewerId, sortedMembers(), true);
   if (v.reviewerId && !f.reviewerId.querySelector(`option[value="${CSS.escape(v.reviewerId)}"]`)) f.reviewerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.reviewerId)}" selected>${esc(memberName(v.reviewerId))}</option>`);
   if (v.preparerId && !f.preparerId.querySelector(`option[value="${CSS.escape(v.preparerId)}"]`)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
