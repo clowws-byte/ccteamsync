@@ -222,8 +222,8 @@ label.fl textarea{min-height:64px;resize:vertical}
 .admbulk{display:none;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;background:var(--accent-soft);border-bottom:1px solid var(--line);font-size:13px}
 .admbulk.on{display:flex}
 .admbulk .btn{padding:5px 10px;font-size:12px}
-.stg-todo{background:#eef0f3;color:#4b5563}.stg-prep{background:#e0ecff;color:#1d4ed8}.stg-review{background:#fef3c7;color:#92400e}.stg-changes{background:#fee2e2;color:#b91c1c}.stg-done{background:#dcfce7;color:#15803d}
-@media (prefers-color-scheme:dark){.stg-todo{background:#2a2f3a;color:#c4c9d2}.stg-prep{background:#1c2a4a;color:#9cc0ff}.stg-review{background:#3a2e10;color:#f6d27a}.stg-changes{background:#3a1a1a;color:#ff9b9b}.stg-done{background:#143323;color:#7ee2a2}}
+.stg-todo{background:#eef0f3;color:#4b5563}.stg-prep{background:#e0ecff;color:#1d4ed8}.stg-review{background:#fef3c7;color:#92400e}.stg-changes{background:#fee2e2;color:#b91c1c}.stg-done{background:#dcfce7;color:#15803d}.stg-draft{background:#ede9fe;color:#6d28d9}.stg-invoicing{background:#ffedd5;color:#c2410c}
+@media (prefers-color-scheme:dark){.stg-todo{background:#2a2f3a;color:#c4c9d2}.stg-prep{background:#1c2a4a;color:#9cc0ff}.stg-review{background:#3a2e10;color:#f6d27a}.stg-changes{background:#3a1a1a;color:#ff9b9b}.stg-done{background:#143323;color:#7ee2a2}.stg-draft{background:#2a1f4a;color:#c4b5fd}.stg-invoicing{background:#3a2412;color:#fdba74}}
 .due-bad{color:var(--bad);font-weight:600}.due-warn{color:var(--warn);font-weight:600}
 .chip.due{background:transparent;border:1px dashed var(--bad);color:var(--bad);font-weight:600}
 .loantag{display:inline-block;font-size:11px;background:#f3e8ff;color:#7e22ce;border-radius:10px;padding:1px 7px;margin-top:2px}
@@ -547,7 +547,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         </div></div>
       <div class="fbar inner"><div class="ms-row" id="jobMs"></div><span class="muted" id="jobCount" style="font-size:12px;margin-left:auto"></span><div class="chips" id="jobChips"></div></div>
       <div class="bd" style="overflow-x:auto"><table class="admt" id="jobTable"></table></div>
-      <div class="legend"><span>Flow: <b>Not started → Preparing → In review → Filed / done</b> (or back to <b>Changes requested</b>)</span><span>Suggested due dates follow LHDN rules — always verify against the latest filing programme.</span></div>
+      <div class="legend"><span>Flow: <b>Not started → In progress → In review → Draft sent → Invoicing → Submitted / filed</b> (or back to <b>Changes requested</b>)</span><span>Suggested due dates follow LHDN rules — always verify against the latest filing programme.</span></div>
     </div>
   </section>
 
@@ -720,7 +720,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         <label class="fl">Preparer<select name="preparerId"></select></label>
         <label class="fl">Reviewer<select name="reviewerId"></select></label>
       </div>
-      <label class="fl">Stage<select name="stage"><option value="todo">Not started</option><option value="prep">Preparing</option><option value="review">In review</option><option value="changes">Changes requested</option><option value="done">Filed / done</option><option value="cancelled" id="optJobCancelled">Cancelled</option></select></label>
+      <label class="fl">Stage<select name="stage"><option value="todo">Not started</option><option value="prep">In progress</option><option value="review">In review</option><option value="draft">Draft sent</option><option value="invoicing">Invoicing</option><option value="done">Submitted / filed</option><option value="changes">Changes requested</option><option value="cancelled" id="optJobCancelled">Cancelled</option></select></label>
       <label class="fl">Notes<textarea name="notes" maxlength="1000" placeholder="Review points, documents outstanding…"></textarea></label>
       <div id="jobTasks"></div>
       <div class="err" id="jobErr"></div>
@@ -1554,7 +1554,7 @@ function renderLog(){
   }).join("") || `<tr><td colspan="6" class="empty">${state.log.length ? "No changes match the filter" : "No changes recorded yet. Every new edit, status update and deletion will appear here."}</td></tr>`);
 }
 // ---------- Client jobs, deadlines & review ----------
-const STAGES = { todo: "Not started", prep: "Preparing", review: "In review", changes: "Changes requested", done: "Filed / done", cancelled: "Cancelled" };
+const STAGES = { todo: "Not started", prep: "In progress", review: "In review", draft: "Draft sent", invoicing: "Invoicing", done: "Submitted / filed", changes: "Changes requested", cancelled: "Cancelled" };
 const FILINGS = window.FILINGS_LIST = ["Form C", "CP204", "CP204A (revision)", "Form E", "Form BE", "Form B", "Form P", "TP documentation", "Tax audit", "Tax investigation", "Advisory", "Client Engagement", "Client Termination", "Strike Off", "Winding Up", "Backlog Form C", "Due Diligence", "Other"];
 const lastDay = (y, m) => new Date(y, m + 1, 0);          // m = 0-based month
 function memberName(id){
@@ -1605,7 +1605,10 @@ function jobActionsHtml(j){
   const out = [];
   const canPrep = canEditFor(j.preparerId), canRev = state.isOwner || iAm(j.reviewerId) || (!!j.reviewerId && canEditFor(j.reviewerId));
   if (canPrep && ["todo","prep","changes"].includes(j.stage || "todo")) out.push(`<button class="btn" data-job-act="${esc(j.id)}" data-a="review">Send for review</button>`);
-  if (canRev && j.stage === "review") out.push(`<button class="btn" data-job-act="${esc(j.id)}" data-a="done">Approve</button><button class="btn" data-job-act="${esc(j.id)}" data-a="changes">Request changes</button>`);
+  if (canRev && j.stage === "review") out.push(`<button class="btn" data-job-act="${esc(j.id)}" data-a="draft">Approve · draft sent</button><button class="btn" data-job-act="${esc(j.id)}" data-a="changes">Request changes</button>`);
+  const canMove = canPrep || canRev;
+  if (canMove && j.stage === "draft") out.push(`<button class="btn" data-job-act="${esc(j.id)}" data-a="invoicing">Invoicing</button>`);
+  if (canMove && j.stage === "invoicing") out.push(`<button class="btn" data-job-act="${esc(j.id)}" data-a="done">Mark submitted</button>`);
   return out.join("");
 }
 function jobHours(j){ return state.allItems.filter(i => i.jobId === j.id).reduce((s,i) => s + dur(i), 0); }
@@ -1629,7 +1632,7 @@ function renderJobs(){
   $("#jobStats").innerHTML = k("Overdue", overdue.length, overdue.length ? "past the statutory date" : "none", overdue.length ? "bad" : "") +
     k("Due in 7 days", soon.length, "not yet filed", soon.length ? "warn" : "") +
     k("Waiting for review", open.filter(j => j.stage === "review").length, "with a reviewer now") +
-    k("Filed this month", vis.filter(j => j.stage === "done" && (j.doneAt || "") >= mStart).length, `${open.length} open job${open.length===1?"":"s"}`);
+    k("Submitted this month", vis.filter(j => j.stage === "done" && (j.doneAt || "") >= mStart).length, `${open.length} open job${open.length===1?"":"s"}`);
   const rows = filteredJobs();
   const nAct = countActive("j");
   $("#addJob").style.display = state.canWrite && editableMembers().length ? "" : "none";
@@ -1682,7 +1685,7 @@ async function jobAct(id, a){
   const j = jobById(id); if (!j) return;
   if (a === "changes") { openJob(j); const f = $("#jobForm"); f.stage.value = "changes"; $("#jobErr").style.color = "var(--warn)"; $("#jobErr").textContent = "Add a note on what needs changing, then save."; setTimeout(() => f.notes.focus(), 40); return; }
   const next = { ...j, stage: a, updatedAt: Date.now(), ...(a === "done" ? { doneAt: ymd(new Date()) } : {}) };
-  try { await commit("jobs", id, next); toast(a === "review" ? `Sent to ${memberName(j.reviewerId)} for review` : a === "done" ? "Approved — marked filed / done" : "Updated"); } catch(_) {}
+  try { await commit("jobs", id, next); toast(a === "review" ? `Sent to ${memberName(j.reviewerId)} for review` : a === "draft" ? "Approved — draft sent to client" : a === "invoicing" ? "Moved to invoicing" : a === "done" ? "Marked submitted / filed 🎉" : "Updated"); } catch(_) {}
 }
 
 // ---------- staff loans (temporary assignment to another manager) ----------
@@ -1728,8 +1731,8 @@ function memberTreeOptions(list){
     (kids[m.id] || []).sort(byRank).forEach(k => walk(k, d + 1)); };
   roots.sort(byRank).forEach(m => walk(m, 0)); return out;
 }                          // schedule views
-const JF = { stage: ["todo","prep","review","changes"], branch: [], type: [], client: [], prep: [], rev: [], due: [], ya: [], q: "" }; // client jobs
-const JF_DEFAULT_STAGE = ["todo","prep","review","changes"];
+const JF = { stage: ["todo","prep","review","draft","invoicing","changes"], branch: [], type: [], client: [], prep: [], rev: [], due: [], ya: [], q: "" }; // client jobs
+const JF_DEFAULT_STAGE = ["todo","prep","review","draft","invoicing","changes"];
 try { const sv = JSON.parse(localStorage.getItem("ts-filters") || "{}"); if (sv.F) Object.assign(F, sv.F); if (sv.JF) Object.assign(JF, sv.JF); } catch(_) {}
 const saveFilters = () => { try { localStorage.setItem("ts-filters", JSON.stringify({ F, JF })); } catch(_) {} };
 let openMs = null;
@@ -2314,10 +2317,10 @@ async function exportJobs(due){
   const list = filteredJobs().filter(j => !due || (j.dueDate && j.dueDate >= due[0] && j.dueDate <= due[1]));
   if (!list.length) { toast(due ? "No jobs are due between those dates" : "No jobs match the current filter"); return; }
   const today = ymd(new Date());
-  const head = ["Ticket no.","Branch","Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Filed / done on","Notes"];
+  const head = ["Ticket no.","Branch","Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Submitted / filed on","Notes"];
   const rows = [head];
   list.forEach(j => { const d = dueInfo(j); const tasks = state.items.filter(i => i.jobId === j.id);
-    const st = j.stage === "cancelled" ? "Cancelled" : j.stage === "done" ? "Filed" : !j.dueDate ? "" : d.days < 0 ? "Overdue" : d.days === 0 ? "Due today" : d.days <= 7 ? "Due within 7 days" : "On track";
+    const st = j.stage === "cancelled" ? "Cancelled" : j.stage === "done" ? "Submitted / filed" : !j.dueDate ? "" : d.days < 0 ? "Overdue" : d.days === 0 ? "Due today" : d.days <= 7 ? "Due within 7 days" : "On track";
     rows.push([j.ticket || "", j.branch ? branchLabel(j.branch) : "", j.client, j.type, j.ya || "", j.refDate ? xlDate(j.refDate) : "", j.dueDate ? xlDate(j.dueDate) : "", jobClosed(j) || !j.dueDate ? "" : d.days, st, STAGES[j.stage] || STAGES.todo, memberName(j.preparerId), memberName(j.reviewerId), round1(jobHours(j) / 60), tasks.length, j.doneAt ? xlDate(j.doneAt) : "", j.notes || ""]); });
   const work = [["Ticket no.","Client","Filing","Date","Day","Start","End","Hours","Team member","Task","Status"]];
   list.forEach(j => state.items.filter(i => i.jobId === j.id).sort((a,b) => (a.date + a.start).localeCompare(b.date + b.start))
@@ -2325,7 +2328,7 @@ async function exportJobs(due){
   // summary by stage and by person
   const sum = [["Stage","Jobs"]]; Object.entries(STAGES).forEach(([k, v]) => sum.push([v, list.filter(j => (j.stage || "todo") === k).length]));
   sum.push([], ["Due status","Jobs"], ["Overdue", list.filter(j => !jobClosed(j) && j.dueDate && j.dueDate < today).length], ["Due within 7 days", list.filter(j => !jobClosed(j) && j.dueDate >= today && dueInfo(j).days <= 7).length]);
-  sum.push([], ["Person","Preparing (open)","Reviewing (open)","Filed"]);
+  sum.push([], ["Person","Preparing (open)","Reviewing (open)","Submitted / filed"]);
   const ppl = [...new Set(list.flatMap(j => [j.preparerId, j.reviewerId]).filter(Boolean))];
   ppl.forEach(id => sum.push([memberName(id), list.filter(j => j.preparerId === id && !jobClosed(j)).length, list.filter(j => j.reviewerId === id && !jobClosed(j)).length, list.filter(j => j.preparerId === id && j.stage === "done").length]));
   const f = filterSummary("j");
