@@ -597,7 +597,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <div class="admbulk" id="admBulk"></div>
       <div class="bd" style="overflow-x:auto"><table class="admt" id="admTable"></table></div>
       <div class="legend">
-        <span><b>Head of Division › Senior Manager › Manager › Senior › Associate</b> — each person sees and schedules everyone below them in the reporting line</span>
+        <span><b>Head of Division › Senior Manager › Manager › Assistant Manager › Senior › Associate</b> — each person sees and schedules everyone below them in the reporting line</span>
         <span><b>Senior / Associate</b> — also see teammates with the same manager (unless set to “Own only”)</span>
         <span><b>View only</b> — can look but not change anything</span>
         <span>Every change here is recorded in the Log book.</span>
@@ -909,11 +909,11 @@ state.date.setHours(0,0,0,0);
 const raw = { members: [], items: [], pmembers: [], pitems: [], jobs: [] };
 
 // ---------- role ladder ----------
-const ROLES = [["director","Administrator"],["hod","Head of Division"],["sm","Senior Manager"],["manager","Manager"],["senior","Senior"],["associate","Associate"]];
+const ROLES = [["director","Administrator"],["hod","Head of Division"],["sm","Senior Manager"],["manager","Manager"],["am","Assistant Manager"],["senior","Senior"],["associate","Associate"]];
 const ROLE_LABEL = Object.fromEntries(ROLES); ROLE_LABEL.staff = "Associate";
 const normAccess = a => (!a || a === "staff") ? "associate" : a;
-const rank = a => ({ director: 0, hod: 1, sm: 2, manager: 3, senior: 4 })[a] ?? 5;
-const isMgmt = a => a === "hod" || a === "sm" || a === "manager";
+const rank = a => ({ director: 0, hod: 1, sm: 2, manager: 3, am: 4, senior: 5 })[a] ?? 6;
+const isMgmt = a => a === "hod" || a === "sm" || a === "manager" || a === "am";
 const roleLabel = a => ROLE_LABEL[a] || "Associate";
 const roleOptions = sel => ROLES.slice(1).map(([v, l]) => `<option value="${v}" ${normAccess(sel) === v ? "selected" : ""}>${l}</option>`).join("");
 // who can this person report to? anyone ranked above their role who is not inside their own reporting tree
@@ -935,7 +935,7 @@ const RIGHTS = [["view","View only"],["edit","Can edit"],["full","Full access (s
 const rightOf = m => m?.isAdmin ? "full" : m?.canEdit === false ? "view" : "edit";
 const rightPatch = r => r === "full" ? { canEdit: true, isAdmin: true } : r === "view" ? { canEdit: false, isAdmin: false } : { canEdit: true, isAdmin: false };
 const rightOptions = sel => RIGHTS.filter(([v]) => v !== "full" || state.fullAccessReady || sel === "full").map(([v, l]) => `<option value="${v}" ${sel === v ? "selected" : ""}>${l}</option>`).join("");
-const roleRights = () => ({ hod: "edit", sm: "edit", manager: "edit", senior: "edit", associate: "edit", ...(state.roleRights || {}) });
+const roleRights = () => ({ hod: "edit", sm: "edit", manager: "edit", am: "edit", senior: "edit", associate: "edit", ...(state.roleRights || {}) });
 const hasReports = id => !!id && state.allMembers.some(x => x.managerId === id && !x.private);
 
 // ---------- data layer (Supabase) ----------
@@ -2512,7 +2512,7 @@ function renderAdmin(){
   [...admSel].forEach(id => { if (!shared.some(m => m.id === id)) admSel.delete(id); });
   const k = (label, v, s) => `<div class="card kpi"><div class="k">${label}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
   $("#admStats").innerHTML = k("Users", shared.length, "excluding your private schedule") +
-    k("Management", mgrs.length, ["hod","sm","manager"].map(r => { const c = mgrs.filter(m => normAccess(m.access) === r).length; return c ? `${c} ${roleLabel(r)}` : ""; }).filter(Boolean).join(" · ") || "none yet") +
+    k("Management", mgrs.length, ["hod","sm","manager","am"].map(r => { const c = mgrs.filter(m => normAccess(m.access) === r).length; return c ? `${c} ${roleLabel(r)}` : ""; }).filter(Boolean).join(" · ") || "none yet") +
     k("No login yet", shared.filter(m => !m.uid).length, "click “Create login” to invite them") +
     k("View only", shared.filter(m => m.canEdit === false).length, "can look but not change");
   const rows = all.filter(m => !q || [m.name, m.role, state.names[m.uid]].join(" ").toLowerCase().includes(q));
