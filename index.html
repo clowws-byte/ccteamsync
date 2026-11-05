@@ -359,6 +359,17 @@ select.brsel{max-width:150px}
 .blk.cancelled,.chip.cancelled{opacity:.45;text-decoration:line-through;filter:grayscale(.8)}
 .stg-cancelled{background:#f1f1f4;color:#6b7280;text-decoration:line-through}
 .st-cancelled{background:#f1f1f4;color:#6b7280}
+.modal{resize:both;min-width:min(340px,96vw);min-height:180px;width:min(480px,96vw);max-width:96vw!important;position:relative}
+.modal.max{width:96vw!important;max-width:96vw!important;height:92vh;max-height:92vh}
+.modal .hd .mxbtn{margin-left:auto;margin-right:6px}
+.modal .tsp-wrap{max-height:none}.modal.max .tsp-wrap{max-height:calc(92vh - 260px)}
+.modal::after{content:"";position:absolute;right:4px;bottom:4px;width:10px;height:10px;border-right:2px solid var(--line);border-bottom:2px solid var(--line);border-radius:0 0 4px 0;pointer-events:none;opacity:.8}
+.updbar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:300;background:var(--grad,#12b5a6);color:#fff;font-weight:700;padding:10px 16px;border-radius:999px;box-shadow:0 12px 28px -10px rgba(91,140,255,.7);display:flex;gap:10px;align-items:center}
+.updbar button{background:#fff;color:#0f766e;border:0;border-radius:999px;padding:5px 12px;font-weight:800;cursor:pointer}
+.reviewer-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 10px;max-height:160px;overflow:auto;padding:8px;border:1px solid var(--line);border-radius:12px}
+.reviewer-list label{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;color:var(--ink)}
+.revnames{font-size:12px;color:var(--muted);max-width:180px}
+tr.jcancel td{opacity:.55}tr.jcancel td a{text-decoration:line-through}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -681,6 +692,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         <label class="fl">Branch<select name="branch"></select></label>
         <label class="fl">User rights<select name="rights"></select></label>
       </div>
+      <div class="fl" id="revWrap" style="font-size:12px;font-weight:600;color:var(--muted)">Reviewers for this person's jobs (pick one or more)<div class="reviewer-list" id="memReviewers"></div></div>
       <div class="nudge" id="memPending" style="display:none;margin:0"><b>⏳ Waiting for approval</b>Set their role, who they report to and their rights, then click <b style="display:inline">Save &amp; approve</b>.</div>
       <div class="fl" id="linkWrap" style="font-size:12px;font-weight:500;color:var(--muted)">Linked account<div id="linkInfo" style="font-size:13px;color:var(--ink);font-weight:400"></div></div>
       <div class="row2">
@@ -701,7 +713,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
 
 <!-- job modal -->
 <div class="scrim" id="jobScrim">
-  <form class="modal" id="jobForm" style="max-width:540px">
+  <form class="modal" id="jobForm" style="width:min(540px,96vw)">
     <div class="hd"><h3 id="jobTitle">New client job</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
       <div class="ticketline" id="jobTicket" style="display:none"></div>
@@ -751,7 +763,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
 
 <!-- confirm modal -->
 <div class="scrim" id="cfmScrim">
-  <div class="modal" style="max-width:380px">
+  <div class="modal" style="width:min(380px,96vw)">
     <div class="hd"><h3 id="cfmTitle">Are you sure?</h3></div>
     <div class="bd"><div id="cfmText" class="muted"></div></div>
     <div class="ft"><button class="btn" id="cfmNo">Cancel</button><button class="btn primary" id="cfmYes" style="background:var(--bad);border-color:var(--bad)">Delete</button></div>
@@ -809,7 +821,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
 <!-- temporary password modal -->
 
 <div class="scrim" id="xpScrim">
-  <div class="modal" style="max-width:440px">
+  <div class="modal" style="width:min(440px,96vw)">
     <div class="hd"><h3 id="xpTitle">Export to Excel</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
       <div class="presets" id="xpPresets"></div>
@@ -821,7 +833,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
   </div>
 </div>
 <div class="scrim" id="tsScrim">
-  <div class="modal" style="max-width:980px">
+  <div class="modal" style="width:min(980px,96vw)">
     <div class="hd"><h3>🗒 Timesheet</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
       <div class="row2" style="grid-template-columns:1fr 1fr auto;align-items:end"><label class="fl">Staff<select id="tsWho"></select></label>
@@ -836,7 +848,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
 </div>
 
 <div class="scrim" id="osScrim">
-  <div class="modal" style="max-width:1040px">
+  <div class="modal" style="width:min(1040px,96vw)">
     <div class="hd"><h3>📋 Outstanding listing</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
       <div class="row2" style="grid-template-columns:1.3fr 1fr 1fr 1fr 1fr;align-items:end">
@@ -854,7 +866,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
   </div>
 </div>
 <div class="scrim" id="tempScrim">
-  <div class="modal" style="max-width:420px">
+  <div class="modal" style="width:min(420px,96vw)">
     <div class="hd"><h3>Temporary password</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
       <p style="margin:0">Give these details to <b id="tempName"></b> directly (in person or by message). This password is shown only once and works for 7 days.</p>
@@ -883,7 +895,8 @@ function assignOptions(sel, mine, allowAdmin = false){
   return `<optgroup label="My team">${mine.map(m => `<option value="${esc(m.id)}" ${m.id === sel ? "selected" : ""}>${esc(m.private ? "You (Administrator)" : lab(m.name, m.branch))}</option>`).join("")}</optgroup>`
     + (others.length ? `<optgroup label="Other people">${others.map(d => `<option value="${esc(d.id)}" ${d.id === sel ? "selected" : ""}>${esc(lab(d.name, d.branch))}</option>`).join("")}</optgroup>` : "");
 }
-const canCancelWork = () => !!state.isOwner || isMgmt(normAccess(meMember()?.access));
+const canCancelWork = () => !!state.isOwner || isMgmt(normAccess(meMember()?.access));   // tasks
+const canCancelJob = () => !!meMember() || !!state.isOwner;                                    // jobs: any staff member
 const jobClosed = j => j?.stage === "done" || j?.stage === "cancelled";
 const DAY_START = 7, DAY_END = 21, WORKDAY_H = 8;
 const $ = s => document.querySelector(s);
@@ -979,7 +992,7 @@ async function commit(kind, id, after, opts = {}){
 const FIELDS = {
   items: [["title","Task"],["memberId","Assigned to"],["jobId","Client job"],["date","Date"],["start","Start"],["end","End"],["status","Status"],["category","Type"],["notes","Notes"]],
   jobs: [["client","Client"],["type","Filing"],["ya","YA"],["dueDate","Due"],["preparerId","Preparer"],["reviewerId","Reviewer"],["stage","Stage"],["notes","Notes"]],
-  members: [["name","Name"],["role","Job title"],["userId","Email"],["access","Access"],["managerId","Reports to"],["canEdit","Rights"],["isAdmin","Full access"],["branch","Branch"],["seeTeam","Can see"],["loans","Loans"],["workStart","Hours from"],["workEnd","Hours to"],["private","Private"]],
+  members: [["name","Name"],["role","Job title"],["userId","Email"],["access","Access"],["managerId","Reports to"],["canEdit","Rights"],["isAdmin","Full access"],["branch","Branch"],["reviewers","Reviewers"],["seeTeam","Can see"],["loans","Loans"],["workStart","Hours from"],["workEnd","Hours to"],["private","Private"]],
 };
 function fmtVal(k, v){
   if (k === "canEdit" && (v === undefined || v === null)) return "Can edit";
@@ -996,6 +1009,7 @@ function fmtVal(k, v){
   if (k === "private") return v ? "yes" : "no";
   if (k === "canEdit") return v === false ? "View only" : "Can edit";
   if (k === "isAdmin") return v ? "Yes (same as Administrator)" : "No";
+  if (k === "reviewers") return (v || []).map(memberName).join(", ") || "—";
   if (k === "seeTeam") return v === false ? "Own schedule only" : "Own + team";
   if (k === "notes") return `"${String(v).slice(0,40)}${String(v).length>40?"…":""}"`;
   return String(v);
@@ -1199,6 +1213,20 @@ function needsUpdate(i){
 function hasEnded(i){ const n = new Date(), today = ymd(n); return i.date < today || (i.date === today && mins(i.end) <= n.getHours()*60+n.getMinutes()); }
 
 // ---------- render ----------
+
+// ---------- pop-ups: maximise button (and drag the corner to resize) ----------
+document.querySelectorAll(".modal > .hd").forEach(hd => { const b = document.createElement("button"); b.type = "button"; b.className = "btn icon mxbtn"; b.title = "Bigger / smaller"; b.textContent = "⤢";
+  b.onclick = () => { const m = hd.parentElement; m.classList.toggle("max"); b.textContent = m.classList.contains("max") ? "⤡" : "⤢"; };
+  const x = hd.querySelector("[data-close]"); hd.insertBefore(b, x || null); });
+// ---------- new version available? ----------
+const BUILD = "202611051539";
+async function checkForUpdate(){
+  try { const r = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }); if (!r.ok) return; const t = await r.text();
+    const m = t.match(/const BUILD = "(\d+)"/); if (m && m[1] !== BUILD && !document.querySelector(".updbar")) {
+      const bar = document.createElement("div"); bar.className = "updbar"; bar.innerHTML = `✨ A new version of CCTeamSync is ready <button type="button">Refresh now</button>`;
+      bar.querySelector("button").onclick = () => location.reload(); document.body.appendChild(bar); } } catch(_) {}
+}
+if (location.protocol.startsWith("http")) { setTimeout(checkForUpdate, 20000); setInterval(checkForUpdate, 5 * 60 * 1000); }
 
 // ---------- playful motion ----------
 const calm = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1515,7 +1543,7 @@ function renderTeam(){
   const pend = state.isOwner ? (state.pendingMembers || []) : [];
   resolveNames(ms.map(m => m.uid).filter(Boolean));
   const me = meMember();
-  $("#members").innerHTML = `<tr><th>Name</th><th>Branch</th><th>Job title</th><th>Role</th><th>Reports to</th>${state.isOwner?"<th>Linked account</th>":""}<th>Tasks this week</th><th></th></tr>` + pend.map(m => `<tr class="pendrow"><td><div class="who">${avatar(m)}${esc(m.name)} <span class="pill st-blocked" style="background:#fff2d9;color:#b45309">⏳ Waiting approval</span></div></td><td>${branchTag(m.branch) || '<span class="muted">—</span>'}</td><td>${esc(m.role||"—")}</td><td><span class="muted">Not set</span></td><td><span class="muted">—</span></td><td><code>${esc(m.userId||"")}</code></td><td class="muted">Requested ${m.requestedAt ? esc(new Date(m.requestedAt).toLocaleDateString("en-GB",{day:"numeric",month:"short"})) : ""}</td>
+  $("#members").innerHTML = `<tr><th>Name</th><th>Branch</th><th>Job title</th><th>Role</th><th>Reports to</th><th>Reviewers</th>${state.isOwner?"<th>Linked account</th>":""}<th>Tasks this week</th><th></th></tr>` + pend.map(m => `<tr class="pendrow"><td><div class="who">${avatar(m)}${esc(m.name)} <span class="pill st-blocked" style="background:#fff2d9;color:#b45309">⏳ Waiting approval</span></div></td><td>${branchTag(m.branch) || '<span class="muted">—</span>'}</td><td>${esc(m.role||"—")}</td><td><span class="muted">Not set</span></td><td><span class="muted">—</span></td><td><span class="muted">—</span></td><td><code>${esc(m.userId||"")}</code></td><td class="muted">Requested ${m.requestedAt ? esc(new Date(m.requestedAt).toLocaleDateString("en-GB",{day:"numeric",month:"short"})) : ""}</td>
       <td><div class="act"><button class="btn primary" data-pend-edit="${esc(m.id)}">Set up &amp; approve</button><button class="btn danger" data-req-no="${esc(m.id)}">Reject</button></div></td></tr>`).join("") + (ms.map(m => {
     const ws = weekStart(new Date()); const days = [...Array(7)].map((_,i)=>ymd(addDays(ws,i)));
     const n = state.items.filter(i => i.memberId===m.id && days.includes(i.date) && i.category!=="leave");
@@ -1523,7 +1551,7 @@ function renderTeam(){
     const ra = normAccess(m.access);
     const access = m.private ? '<span class="pill st-planned">Administrator · private</span>' : `<span class="pill ${isMgmt(ra) ? "st-progress" : "st-planned"}">${esc(roleLabel(ra))}</span>`;
     const linked = m.userId ? `<code>${esc(m.userId)}</code> ${m.uid ? "" : '<span class="muted">(no login)</span>'}` : '<span class="muted">—</span>';
-    return `<tr><td><div class="who">${avatar(m)}${esc(m.name)}${me && m.id===me.id?' <span class="pill st-progress">You</span>':""}</div></td><td>${branchTag(m.branch) || '<span class="muted">—</span>'}</td><td>${esc(m.role||"—")}</td><td>${access}</td><td>${mgr ? esc(mgr.name) : '<span class="muted">—</span>'}</td>
+    return `<tr><td><div class="who">${avatar(m)}${esc(m.name)}${me && m.id===me.id?' <span class="pill st-progress">You</span>':""}</div></td><td>${branchTag(m.branch) || '<span class="muted">—</span>'}</td><td>${esc(m.role||"—")}</td><td>${access}</td><td>${mgr ? esc(mgr.name) : '<span class="muted">—</span>'}</td><td class="revnames">${(m.reviewers || []).map(id => esc(memberName(id))).join(", ") || '<span class="muted">—</span>'}</td>
       ${state.isOwner?`<td>${linked}</td>`:""}<td>${n.length} · ${hrs(n.reduce((s,i)=>s+dur(i),0))}</td>
       <td><div class="act">${state.isOwner && state.canWrite?`<button class="btn" data-edit-member="${esc(m.id)}">Edit</button>`:""}</div></td></tr>`;
   }).join("") || `<tr><td colspan="7" class="empty">No team members yet. ${state.isOwner?"Click “+ Add member” to start.":""}</td></tr>`);
@@ -1619,7 +1647,7 @@ function filteredJobs(){
       (!JF.branch.length || JF.branch.includes(j.branch || "__none")) && (!JF.type.length || JF.type.includes(j.type)) && (!JF.client.length || JF.client.includes(j.client)) &&
       (!JF.prep.length || JF.prep.includes(j.preparerId)) && (!JF.rev.length || JF.rev.includes(j.reviewerId)) && (!JF.ya.length || JF.ya.includes(j.ya)) &&
       (!q || q.split(/\s+/).every(w => [j.ticket, j.branch, BRANCH_NAME[j.branch], j.client, j.type, j.ya && "ya" + j.ya, j.ya, j.notes, memberName(j.preparerId), memberName(j.reviewerId), STAGES[j.stage]].join(" ").toLowerCase().includes(w))))
-    .sort((a,b) => (a.stage === "done") - (b.stage === "done") || String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
+    .sort((a,b) => jobClosed(a) - jobClosed(b) || (a.stage === "cancelled") - (b.stage === "cancelled") || String(a.dueDate || "9999").localeCompare(String(b.dueDate || "9999")));
 }
 function renderJobs(){
   renderJobBar();
@@ -1638,7 +1666,7 @@ function renderJobs(){
   $("#addJob").style.display = state.canWrite && editableMembers().length ? "" : "none";
   $("#jobTable").innerHTML = `<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Filing</th><th>Due</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
     const d = dueInfo(j);
-    return `<tr><td><span class="ticket">${j.ticket ? esc(j.ticket) : `<span class="muted" title="Assigned when saved">…</span>`}</span></td><td>${branchTag(j.branch) || '<span class="muted">—</span>'}</td><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
+    return `<tr class="${j.stage === "cancelled" ? "jcancel" : ""}"><td><span class="ticket">${j.ticket ? esc(j.ticket) : `<span class="muted" title="Assigned when saved">…</span>`}</span></td><td>${branchTag(j.branch) || '<span class="muted">—</span>'}</td><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
       <td>${esc(j.type)}${j.ya ? `<div class="muted" style="font-size:12px">YA ${esc(j.ya)}</div>` : ""}</td>
       <td><span class="${d.cls}">${esc(d.text)}</span></td><td>${esc(memberName(j.preparerId))}</td><td>${esc(memberName(j.reviewerId))}</td>
       <td>${stagePill(j.stage)}</td><td>${hrs(jobHours(j))}</td>
@@ -1660,13 +1688,18 @@ function openJob(j, preset = {}){
   if (v.preparerId && !f.preparerId.querySelector(`option[value="${CSS.escape(v.preparerId)}"]`)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
   f.branch.innerHTML = branchOptions(v.branch || (!j ? (memberById(v.preparerId)?.branch || meMember()?.branch || "") : ""));
-  f.preparerId.onchange = () => { if (!f.branch.value) { const b = memberById(f.preparerId.value)?.branch || (state.directory || []).find(d => d.id === f.preparerId.value)?.branch; if (b) f.branch.value = b; } };
+  const fillReviewers = keep => { const prepM = memberById(f.preparerId.value); const revIds = (prepM?.reviewers || []).filter(Boolean);
+    const cur = keep ?? f.reviewerId.value; const base = assignOptions(cur, sortedMembers());
+    f.reviewerId.innerHTML = `<option value="">—</option>` + (revIds.length ? `<optgroup label="${esc((prepM?.name || "Their") + "'s reviewers")}">${revIds.map(id => `<option value="${esc(id)}">${esc(memberName(id))}</option>`).join("")}</optgroup>` : "") + base;
+    f.reviewerId.value = cur && f.reviewerId.querySelector(`option[value="${CSS.escape(cur)}"]`) ? cur : (!j && revIds[0]) || cur || ""; };
+  fillReviewers(v.reviewerId || "");
+  f.preparerId.onchange = () => { fillReviewers(j ? undefined : ""); if (!f.branch.value) { const b = memberById(f.preparerId.value)?.branch || (state.directory || []).find(d => d.id === f.preparerId.value)?.branch; if (b) f.branch.value = b; } };
   $("#clientList").innerHTML = [...new Set(state.allJobs.map(x => x.client).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">`).join("");
   $("#jobTitle").textContent = j ? (canEd ? "Edit client job" : "Client job") : "New client job";
   $("#jobTicket").style.display = ""; $("#jobTicket").innerHTML = j?.ticket ? `🎫 Ticket no. <b>${esc(j.ticket)}</b>` : `🎫 Ticket no. <span class="muted">will be given automatically when you save</span>`;
   $("#delJob").style.display = j && canEd && canDeleteWork() ? "" : "none";
-  $("#cancelJob").style.display = j && canEd && canCancelWork() && j.stage !== "cancelled" ? "" : "none";
-  const ojc = $("#optJobCancelled"); ojc.hidden = ojc.disabled = !(canCancelWork() || j?.stage === "cancelled");
+  $("#cancelJob").style.display = j && canEd && canCancelJob() && j.stage !== "cancelled" ? "" : "none";
+  const ojc = $("#optJobCancelled"); ojc.hidden = ojc.disabled = !(canCancelJob() || j?.stage === "cancelled");
   f.querySelector("[type=submit]").style.display = canEd ? "" : "none";
   f.querySelectorAll("input,select,textarea,button.linkbtn").forEach(el => el.disabled = !canEd);
   const linked = j ? state.items.filter(i => i.jobId === j.id).sort((a,b) => (a.date+a.start).localeCompare(b.date+b.start)) : [];
@@ -1731,8 +1764,8 @@ function memberTreeOptions(list){
     (kids[m.id] || []).sort(byRank).forEach(k => walk(k, d + 1)); };
   roots.sort(byRank).forEach(m => walk(m, 0)); return out;
 }                          // schedule views
-const JF = { stage: ["todo","prep","review","draft","invoicing","changes"], branch: [], type: [], client: [], prep: [], rev: [], due: [], ya: [], q: "" }; // client jobs
-const JF_DEFAULT_STAGE = ["todo","prep","review","draft","invoicing","changes"];
+const JF = { stage: ["todo","prep","review","draft","invoicing","changes","cancelled"], branch: [], type: [], client: [], prep: [], rev: [], due: [], ya: [], q: "" }; // client jobs
+const JF_DEFAULT_STAGE = ["todo","prep","review","draft","invoicing","changes","cancelled"];
 try { const sv = JSON.parse(localStorage.getItem("ts-filters") || "{}"); if (sv.F) Object.assign(F, sv.F); if (sv.JF) Object.assign(JF, sv.JF); } catch(_) {}
 const saveFilters = () => { try { localStorage.setItem("ts-filters", JSON.stringify({ F, JF })); } catch(_) {} };
 let openMs = null;
@@ -2518,9 +2551,9 @@ function renderAdmin(){
   const rows = all.filter(m => !q || [m.name, m.role, state.names[m.uid]].join(" ").toLowerCase().includes(q));
   const selectable = rows.filter(m => !m.private);
   const allSel = selectable.length && selectable.every(m => admSel.has(m.id));
-  $("#admTable").innerHTML = `<tr><th style="width:28px"><input type="checkbox" data-adm-all ${allSel?"checked":""} aria-label="Select all"></th><th>User</th><th>Branch</th><th>Role</th><th>Reports to</th><th>Rights</th><th>Can see</th><th>Sign-in</th><th>Login</th><th></th></tr>` + (rows.map(m => {
+  $("#admTable").innerHTML = `<tr><th style="width:28px"><input type="checkbox" data-adm-all ${allSel?"checked":""} aria-label="Select all"></th><th>User</th><th>Branch</th><th>Role</th><th>Reports to</th><th>Reviewers</th><th>Rights</th><th>Can see</th><th>Sign-in</th><th>Login</th><th></th></tr>` + (rows.map(m => {
     if (m.private) return `<tr><td></td><td><div class="who">${avatar(m)}<div>${esc(m.name)}<div class="muted" style="font-size:12px">${esc(m.role||"")}</div></div></div></td>
-      <td colspan="5"><span class="pill st-planned">Private — only you can see this schedule</span></td><td>${m.userId ? `<code>${esc(m.userId)}</code>` : `<span class="muted">No email yet</span>`}</td><td></td><td><div class="acts"><button class="btn" data-edit-member="${esc(m.id)}">Edit</button></div></td></tr>`;
+      <td colspan="6"><span class="pill st-planned">Private — only you can see this schedule</span></td><td>${m.userId ? `<code>${esc(m.userId)}</code>` : `<span class="muted">No email yet</span>`}</td><td></td><td><div class="acts"><button class="btn" data-edit-member="${esc(m.id)}">Edit</button></div></td></tr>`;
     const isHod = normAccess(m.access) === "hod";
     const mgrOpts = isHod ? `<option value="">— Top level</option>` : supOptions(supervisorsFor(m).filter(x => normAccess(x.access) !== "director"), m.managerId, m.access);
     const nReports = shared.filter(x => x.managerId === m.id).length;
@@ -2529,12 +2562,13 @@ function renderAdmin(){
       <td><select data-adm="branch" data-id="${esc(m.id)}" class="brsel">${branchOptions(m.branch, "—")}</select></td>
       <td><select data-adm="access" data-id="${esc(m.id)}">${roleOptions(m.access)}</select></td>
       <td><select data-adm="managerId" data-id="${esc(m.id)}" ${isHod ? `disabled title="Head of Division is the top level and reports to no one"` : ""}>${mgrOpts}</select>${!isHod && !m.managerId ? `<div class="loantag" style="color:var(--warn,#b45309)">No manager assigned</div>` : ""}${activeLoans(m).map(l => `<div class="loantag">On loan to ${esc(memberName(l.managerId))} until ${esc(parse(l.to).toLocaleDateString(undefined,{day:"numeric",month:"short"}))}</div>`).join("")}</td>
+      <td><div class="revnames">${(m.reviewers || []).map(id => esc(memberName(id))).join(", ") || '<span class="muted">—</span>'}</div><button class="linkbtn" data-edit-member="${esc(m.id)}">Set reviewers</button></td>
       <td><select data-adm="rights" data-id="${esc(m.id)}">${rightOptions(rightOf(m))}</select></td>
       <td><select data-adm="seeTeam" data-id="${esc(m.id)}" ${isMgmt(normAccess(m.access))?`disabled title="Management roles see everyone below them"`:""}><option value="1">Own + team</option><option value="0" ${m.seeTeam===false?"selected":""}>Own only</option></select></td>
       <td>${m.userId ? `<code>${esc(m.userId)}</code>` : `<span class="muted">No email yet</span>`}<div style="margin-top:3px">${pwStatus(m)}</div></td>
       <td>${m.uid ? '<span class="pill st-done">Can sign in</span>' : '<span class="muted">No login</span>'}</td>
       <td><div class="acts"><button class="btn" data-edit-member="${esc(m.id)}">Edit</button>${!isMgmt(normAccess(m.access)) ? `<button class="btn" data-adm-lend="${esc(m.id)}">Lend</button>` : ""}<button class="btn" data-adm-reset="${esc(m.id)}" title="Back to Associate · Can edit · Own + team">Reset role</button>${m.uid?`<button class="btn" data-adm-unlink="${esc(m.id)}">Remove login</button>`:""}<button class="btn ${m.uid ? "" : "primary"}" data-adm-temp="${esc(m.id)}">${m.uid ? "Reset password" : "Create login"}</button><button class="btn danger" data-adm-remove="${esc(m.id)}">Remove</button></div></td></tr>`;
-  }).join("") || `<tr><td colspan="10" class="empty">${state.allMembers.length ? "No users match the search" : "No users yet — click “+ Add user”."}</td></tr>`);
+  }).join("") || `<tr><td colspan="11" class="empty">${state.allMembers.length ? "No users match the search" : "No users yet — click “+ Add user”."}</td></tr>`);
   const n = admSel.size;
   $("#admBulk").className = "admbulk" + (n ? " on" : "");
   $("#admBulk").innerHTML = n ? `<b>${n} selected</b>
@@ -2752,6 +2786,8 @@ function openMember(m){
   f.rights.innerHTML = rightOptions(m ? rightOf(m) : roleRights()[f.access.value] || "edit");
   f.branch.innerHTML = branchOptions(m?.branch || (m ? "" : meMember()?.branch || ""));
   fillSup(); f.access.onchange = () => { fillSup(); f.rights.value = roleRights()[f.access.value] || "edit"; };
+  const revPool = [...new Map([...state.allMembers.filter(x => !x.private), ...(state.directory || [])].map(x => [x.id, x])).values()].filter(x => x.id !== m?.id && x.access !== "director" && !x.pending).sort((a, b) => String(a.name).localeCompare(b.name));
+  $("#memReviewers").innerHTML = revPool.map(x => `<label><input type="checkbox" value="${esc(x.id)}" ${(m?.reviewers || []).includes(x.id) ? "checked" : ""}> ${esc(x.name)}</label>`).join("") || `<span class="muted">No other people yet</span>`;
   const pend = !!m?.pending; $("#memPending").style.display = pend ? "" : "none"; $("#memReject").style.display = pend ? "" : "none";
   $("#memSave").textContent = pend ? "Save & approve" : "Save"; $("#privWrap").style.display = pend || (state.isOwner && !state.isMain) ? "none" : "";
   const syncPriv = () => { $("#accessWrap").style.display = f.priv.checked ? "none" : ""; $("#linkWrap").style.display = "none"; };
@@ -2777,7 +2813,8 @@ $("#memForm").addEventListener("submit", async e => {
   const data = { name: f.name.value.trim(), role: f.role.value.trim(), workStart: f.workStart.value || "09:00", workEnd: f.workEnd.value || "18:00", color: pickedColor,
     order: editingMember?.order ?? (priv ? -1 : Math.max(0, ...state.allMembers.map(m=>m.order||0)) + 1),
     access: priv ? "director" : f.access.value, managerId: (priv || f.access.value === "hod") ? null : (f.managerId.value || null), uid: priv ? null : (editingMember?.uid || null), private: priv,
-    ...(priv ? { canEdit: true, isAdmin: false } : rightPatch(f.rights.value)), seeTeam: editingMember?.seeTeam !== false, userId: userId || null, branch: f.branch.value || null };
+    ...(priv ? { canEdit: true, isAdmin: false } : rightPatch(f.rights.value)), seeTeam: editingMember?.seeTeam !== false, userId: userId || null, branch: f.branch.value || null,
+    reviewers: priv ? [] : [...document.querySelectorAll("#memReviewers input:checked")].map(x => x.value) };
   if (!data.name) return $("#memErr").textContent = "Enter a name.";
   if (mins(data.workEnd) <= mins(data.workStart)) return $("#memErr").textContent = "Working hours end must be after start.";
   if (editingMember?.demo) data.demo = true;
@@ -2891,7 +2928,7 @@ $("#jobForm").addEventListener("submit", async e => {
   $("#jobErr").style.color = "";
   if (!data.client) return $("#jobErr").textContent = "Enter the client's name.";
   if (!data.branch) return $("#jobErr").textContent = "Choose the branch for this job.";
-  if (data.stage === "cancelled" && editingJob?.stage !== "cancelled" && !canCancelWork()) return $("#jobErr").textContent = "Only a manager or the Administrator can cancel a job.";
+
   if (!data.dueDate) return $("#jobErr").textContent = "Set a due date (use the suggested statutory date if it applies).";
   data.createdBy = editingJob?.createdBy || (editingJob ? null : meMember()?.id) || null; if (!data.createdBy) delete data.createdBy;
   if (editingJob?.demo) data.demo = true;
@@ -2899,7 +2936,7 @@ $("#jobForm").addEventListener("submit", async e => {
   try { await commit("jobs", editingJob?.id || uid(), { ...(editingJob || {}), ...data }); $("#jobScrim").classList.remove("on"); toast(editingJob ? "Job updated" : "Job added"); } catch(_) {}
 });
 $("#cancelJob").addEventListener("click", async () => {
-  const j = editingJob; if (!j || !canCancelWork()) return;
+  const j = editingJob; if (!j || !canCancelJob()) return;
   if (!(await confirmBox("Cancel this client job?", `${jobLabel(j)} stays on record (ticket ${j.ticket || "—"}) but is marked Cancelled and drops off the open and outstanding lists.`, "Cancel job"))) return;
   try { await commit("jobs", j.id, { ...j, stage: "cancelled", cancelledAt: ymd(new Date()), cancelledBy: meMember()?.name || "", updatedAt: Date.now() }); $("#jobScrim").classList.remove("on"); toast("Job cancelled"); } catch(_) {}
 });
