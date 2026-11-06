@@ -378,6 +378,10 @@ tr.jcancel td{opacity:.55}tr.jcancel td a{text-decoration:line-through}
 tr.uperr td{background:#fde2e4}
 .acct td,.acct th{white-space:nowrap}.acct input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
 .acct tr.accgrp td{background:var(--soft);font-weight:800;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tsstatus{font-size:13px;padding:8px 12px;border-radius:12px;background:var(--soft);margin-bottom:6px}
+.tsp-banner{font-weight:800;font-size:11.5px;margin:-2px 0 8px}
+.tsnudge{margin-bottom:12px}.tsn-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:2px 0}
+#cfmScrim{z-index:150}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -678,6 +682,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
   <form class="modal" id="taskForm">
     <div class="hd"><h3 id="taskTitle">New task</h3><button type="button" class="btn icon" data-close>✕</button></div>
     <div class="bd">
+      <div class="nudge" id="taskLocked" style="display:none;margin:0"><b>🔒 Locked</b>This week's timesheet has been signed off, so this task can no longer be changed.</div>
       <label class="fl">Task<input name="title" required maxlength="120" placeholder="e.g. Client follow-up calls"></label>
       <div class="row2">
         <label class="fl">Assigned to<select name="memberId" required></select></label>
@@ -872,11 +877,13 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <div class="row2" style="grid-template-columns:1fr 1fr auto;align-items:end"><label class="fl">Staff<select id="tsWho"></select></label>
       <label class="fl">Week (any day in the week)<input type="date" id="tsWeek"></label>
       <div class="presets"><button class="btn" data-tsweek="-1">Last week</button><button class="btn" data-tsweek="0">This week</button><button class="btn" data-tsweek="1">Next week</button></div></div>
+      <div id="tsPending"></div>
+      <div id="tsStatus" class="tsstatus"></div>
       <div class="muted" id="tsNote" style="font-size:12.5px"></div>
       <div id="tsPreview" class="tsp-wrap"></div>
       <div class="err" id="tsErr" style="color:var(--bad);font-size:13px"></div>
     </div>
-    <div class="ft"><button class="btn left" data-close>Close</button><button class="btn" id="tsPdf">⬇ PDF</button><button class="btn primary" id="tsGo">⬇ Excel</button></div>
+    <div class="ft"><button class="btn left" data-close>Close</button><button class="btn" id="tsWithdraw" style="display:none">Withdraw</button><button class="btn warnbtn" id="tsSubmit" style="display:none">✍ Submit for sign-off</button><button class="btn primary" id="tsSign" style="display:none">✅ Sign off</button><button class="btn" id="tsPdf">⬇ PDF</button><button class="btn" id="tsGo">⬇ Excel</button></div>
   </div>
 </div>
 
@@ -1061,6 +1068,7 @@ function handleWriteErr(e){
 const clean = o => { if (!o) return null; const { id, _priv, ...r } = o; return r; };
 // every create / edit / delete goes through commit() so it is written to the log book
 async function commit(kind, id, after, opts = {}){
+  if (kind === "items") { const p0 = state.allItems.find(x => x.id === id); if ((p0 && weekSigned(p0.memberId, p0.date)) || (after && weekSigned(after.memberId, after.date))) { toast("🔒 That week's timesheet has been signed off — it can't be changed"); throw new Error("locked"); } }
   const list = kind === "members" ? state.allMembers : kind === "jobs" ? state.allJobs : state.allItems;
   const prev = list.find(x => x.id === id);
   const before = clean(prev);
@@ -1141,6 +1149,7 @@ async function loadAll(){
   raw.items = i.filter(x => x._p !== "1"); raw.pitems = i.filter(x => x._p === "1");
   raw.jobs = j;
   try { const { data: dir } = await sb.rpc("staff_directory"); state.directory = dir || []; } catch(_) { state.directory = []; }
+  await loadTimesheets();
   try { const { data: cf } = await sb.from("config").select("id,data").in("id", ["roleRights", "features", "tabAccess"]);
     const by = Object.fromEntries((cf || []).map(r => [r.id, r.data])); state.roleRights = by.roleRights || {}; state.accessCfg = by.tabAccess || {}; state.fullAccessReady = !!by.features?.fullAccess; } catch(_) {}
   identify(); derive();
@@ -1154,6 +1163,7 @@ function queueReload(kind){
     try {
       for (const k of kinds) {
         if (k === "log") { await loadLog(); continue; }
+        if (k === "timesheets") { await loadTimesheets(); continue; }
         const rows = await loadTable(TABLE[k]);
         if (k === "members") { raw.members = rows.filter(x => !x.private); raw.pmembers = rows.filter(x => x.private); identify(); }
         else if (k === "items") { raw.items = rows.filter(x => x._p !== "1"); raw.pitems = rows.filter(x => x._p === "1"); }
@@ -1170,11 +1180,13 @@ function subscribeLive(){
     .on("postgres_changes", { event: "*", schema: "public", table: "members" }, () => queueReload("members"))
     .on("postgres_changes", { event: "*", schema: "public", table: "items" }, () => queueReload("items"))
     .on("postgres_changes", { event: "*", schema: "public", table: "jobs" }, () => queueReload("jobs"))
+    .on("postgres_changes", { event: "*", schema: "public", table: "timesheets" }, () => queueReload("timesheets"))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "audit_log" }, () => { if (state.isOwner) queueReload("log"); })
     .subscribe();
 }
 // safety net: refresh every 2 minutes in case a live update was missed
-setInterval(() => { if (state.session && !document.hidden) ["members","items","jobs"].forEach(queueReload); }, 120000);
+setInterval(() => { if (state.session && !document.hidden) ["members","items","jobs","timesheets"].forEach(queueReload); }, 120000);
+async function loadTimesheets(){ try { const { data } = await sb.from("timesheets").select("*"); state.timesheets = data || []; } catch(_) { state.timesheets = state.timesheets || []; } }
 
 // Excel/CSV downloads on a normal website
 const blobDownloads = { save: async ({ filename, data }) => {
@@ -1342,6 +1354,14 @@ function confetti(n = 70){
     box.appendChild(c); }
   document.body.appendChild(box); setTimeout(() => box.remove(), 3000);
 }
+function tsNudges(){
+  const me = meMember(); const out = [];
+  if (me && !me.private) { const lw = ymd(addDays(weekStart(new Date()), -7)); const r = tsRec(me.id, lw);
+    if (!r && state.items.some(i => i.memberId === me.id && weekOf(i.date) === lw)) out.push(`<span>🗒 Last week's timesheet (${niceDate(lw)}) isn't submitted yet.</span><button class="btn primary" data-ts-open-week="${esc(me.id)}|${lw}">Review &amp; submit</button>`); }
+  const pend = pendingSignoffs(); if (pend.length) out.push(`<span>✅ ${pend.length} timesheet${pend.length > 1 ? "s" : ""} waiting for your sign-off.</span><button class="btn primary" data-ts-open-week="${esc(pend[0].member_id)}|${pend[0].week_start}">Review</button>`);
+  ["v-dashboard", "v-mine"].forEach(vid => { const host = document.getElementById(vid); if (!host) return; let n = host.querySelector(".tsnudge");
+    if (!out.length) { if (n) n.remove(); return; } if (!n) { n = document.createElement("div"); n.className = "nudge tsnudge"; host.prepend(n); } n.innerHTML = out.map(x => `<div class="tsn-row">${x}</div>`).join(""); });
+}
 function greet(){
   const host = document.getElementById("v-dashboard"); if (!host) return;
   let h = document.getElementById("hello");
@@ -1384,7 +1404,7 @@ function render(){
   document.querySelectorAll("[data-ts-open]").forEach(b => b.style.display = canUse("f_timesheet") ? "" : "none");
   $("#addMember").style.display = state.isOwner && state.canWrite ? "" : "none";
   $("#clearDemo").style.display = state.isOwner && (state.allMembers.some(m=>m.demo) || state.allItems.some(i=>i.demo) || state.allJobs.some(j=>j.demo)) ? "" : "none";
-  renderSchedBar(); greet(); onViewEnter();
+  renderSchedBar(); greet(); tsNudges(); onViewEnter();
   const tb = document.querySelector('#tabs button[data-v="team"]'); if (tb) { const n = state.isOwner ? (state.pendingMembers || []).length : 0; tb.innerHTML = "Team" + (n ? ` <span class="tabbadge">${n}</span>` : ""); }
   $(".datenav").style.visibility = (["jobs","summary","team","log","admin","access"].includes(state.view)) ? "hidden" : "";
 
@@ -1655,7 +1675,7 @@ function renderLog(){
   who.value = people.some(e => (e.uid || e.byName) === cur) ? cur : "";
   const rows = state.log.filter(e => (!who.value || (e.uid || e.byName) === who.value) && (!act.value || (act.value === "auth" ? e.kind === "auth" : e.action === act.value)) &&
     (!q || [e.title, e.byName, e.who, state.names[e.uid]].join(" ").toLowerCase().includes(q)));
-  const verbs = { create: "Created", update: "Edited", delete: "Deleted", restore: "Restored", signin: "Signed in", access_requested: "Access requested", access_approved: "Access approved", access_rejected: "Access rejected", signout: "Signed out", signin_failed: "Failed sign-in", pw_set: "Password", pw_temp: "Password reset", pw_request: "Reset request", setting: "Setting" };
+  const verbs = { create: "Created", update: "Edited", delete: "Deleted", restore: "Restored", signin: "Signed in", access_requested: "Access requested", ts_submit: "Timesheet submitted", ts_signed: "Timesheet signed off", access_approved: "Access approved", access_rejected: "Access rejected", signout: "Signed out", signin_failed: "Failed sign-in", pw_set: "Password", pw_temp: "Password reset", pw_request: "Reset request", setting: "Setting" };
   const exists = e => (e.kind === "members" ? state.allMembers : e.kind === "jobs" ? state.allJobs : state.allItems).some(x => x.id === e.targetId);
   $("#logTable").innerHTML = `<tr><th>When</th><th>Changed by</th><th>Action</th><th>What</th><th>Details</th><th></th></tr>` + (rows.slice(0, 400).map(e => {
     const when = new Date(e.at);
@@ -2015,6 +2035,15 @@ async function runExport(){
   if (xpKind === "timeline") await exportTimeline(a, b); else await exportJobs(all ? null : [a, b]);
 }
 
+// ---------- weekly timesheet sign-off ----------
+const weekOf = ds => ymd(weekStart(parse(ds)));
+const tsRec = (memberId, ws) => (state.timesheets || []).find(t => t.member_id === memberId && t.week_start === ws);
+const weekSigned = (memberId, ds) => tsRec(memberId, weekOf(ds))?.status === "signed";
+const weekEnded = ws => ymd(addDays(parse(ws), 7)) <= ymd(new Date());
+const canSignFor = memberId => state.isOwner || (canEditFor(memberId) && meMember()?.id !== memberId);
+const fmtStamp = t => t ? new Date(t).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+const pendingSignoffs = () => (state.timesheets || []).filter(t => t.status === "submitted" && canSignFor(t.member_id));
+
 // ---------- weekly timesheet (firm template) ----------
 const EXCELJS_URL = "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
 function loadExcelJS(){
@@ -2035,7 +2064,16 @@ const TS = {
   dayMins: d => d.rows.filter(r => !r.lunch).reduce((s, r) => s + TS.rowMins(r), 0),
 };
 
+const tsDay = t => t ? new Date(t).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "";
+function tsSignInfo(data){
+  const r = data._rec;
+  return { banner: !r ? "DRAFT — not yet submitted for sign-off" : r.status === "signed" ? `SIGNED OFF by ${r.signed_name} on ${tsDay(r.signed_at)} · submitted by ${r.submitted_name} on ${tsDay(r.submitted_at)} · locked` : `SUBMITTED by ${r.submitted_name} on ${tsDay(r.submitted_at)} — awaiting sign-off`,
+    staffSig: r ? `Signature : ${r.submitted_name} (e-signed)` : "Signature :", staffDate: r ? `Date : ${tsDay(r.submitted_at)}` : `Date : ${data.submit || ""}`,
+    mgrSig: r?.status === "signed" ? `Signature : ${r.signed_name} (e-signed)` : "Signature :", mgrDate: r?.status === "signed" ? `Date : ${tsDay(r.signed_at)}` : "Date :",
+    color: !r ? "FF9CA3AF" : r.status === "signed" ? "FF16A34A" : "FFD97706" };
+}
 async function buildTimesheetXlsx(ExcelJS, data){
+  const SI = tsSignInfo(data);
   const wb = new ExcelJS.Workbook(); wb.creator = "CCTeamSync";
   const ws = wb.addWorksheet("Timesheet", {
     pageSetup: { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true,
@@ -2057,6 +2095,7 @@ async function buildTimesheetXlsx(ExcelJS, data){
   // ---- title block
   ws.mergeCells("A1:H1"); C("A1", "Weekly Time-sheet", { font: { size: 14, bold: true, underline: true } }); ws.getRow(1).height = 22;
   ws.mergeCells("A2:H2"); C("A2", "* Time sheet need to be verified by Tax Manager of the Branch on the next working day *", { font: { bold: true, color: { argb: TS.red } } });
+  ws.mergeCells("F3:H4"); C("F3", SI.banner, { font: { bold: true, color: { argb: SI.color } }, wrap: true, h: "center" });
   C("A3", "Staff name:", { font: { bold: true } }); ws.mergeCells("B3:E3"); C("B3", data.name, { font: { bold: true, size: 11 } });
   C("A4", "Duration:", { font: { bold: true } }); ws.mergeCells("B4:E4"); C("B4", `From  ${TS.dmy(data.from)}   To  ${TS.dmy(data.to)}`, { font: { bold: true } });
 
@@ -2114,9 +2153,9 @@ async function buildTimesheetXlsx(ExcelJS, data){
   grid(r, 1, r, 4); boxRange(r, 1, r, 4);
   r += 3;
   // ---- sign-off
-  const sign = [["Submitted by Staff", `Date : ${data.submit || ""}`, "Checked by Senior Manager"], ["Approved by Manager / HOD", "Date :", "Approved by Tax MD"]];
-  sign.forEach(([a, d, f]) => {
-    C(`A${r}`, a, { font: { bold: true }, fill: TS.head, wrap: true }); ws.mergeCells(`B${r}:C${r}`); C(`B${r}`, "Signature :", { wrap: true }); ws.getCell(`B${r}`).alignment = { vertical: "top" };
+  const sign = [["Submitted by Staff", SI.staffDate, "Checked by Senior Manager", SI.staffSig], ["Approved by Manager / HOD", SI.mgrDate, "Approved by Tax MD", SI.mgrSig]];
+  sign.forEach(([a, d, f, sg]) => {
+    C(`A${r}`, a, { font: { bold: true }, fill: TS.head, wrap: true }); ws.mergeCells(`B${r}:C${r}`); C(`B${r}`, sg, { wrap: true }); ws.getCell(`B${r}`).alignment = { vertical: "top" };
     ws.mergeCells(`D${r}:E${r}`); C(`D${r}`, d); ws.getCell(`D${r}`).alignment = { vertical: "top", indent: 1 };
     C(`F${r}`, f, { font: { bold: true }, fill: TS.head, h: "center", wrap: true });
     C(`G${r}`, "Signature :"); ws.getCell(`G${r}`).alignment = { vertical: "top" }; C(`H${r}`, "Date :"); ws.getCell(`H${r}`).alignment = { vertical: "top" };
@@ -2134,6 +2173,8 @@ function buildTimesheetPdf(jsPDF, data){
   doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(...ink); doc.text("Weekly Time-sheet", M, 40);
   doc.setLineWidth(.8); doc.line(M, 43, M + doc.getTextWidth("Weekly Time-sheet"), 43);
   doc.setFontSize(9); doc.setTextColor(220, 0, 0); doc.text("* Time sheet need to be verified by Tax Manager of the Branch on the next working day *", M, 58);
+  const SI = tsSignInfo(data); const hex = SI.color.slice(2); doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
+  doc.setTextColor(parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)); doc.text(SI.banner, W - M, 76, { align: "right", maxWidth: 260 });
   doc.setTextColor(...ink); doc.setFontSize(10);
   doc.text("Staff name:", M, 76); doc.setFont("helvetica", "normal"); doc.text(data.name, M + 70, 76);
   doc.setFont("helvetica", "bold"); doc.text("Duration:", M, 91); doc.setFont("helvetica", "normal"); doc.text(`From  ${TS.dmy(data.from)}   To  ${TS.dmy(data.to)}`, M + 70, 91);
@@ -2170,7 +2211,7 @@ function buildTimesheetPdf(jsPDF, data){
   y = doc.lastAutoTable.finalY + 18;
   const sig = { minCellHeight: 30, valign: "top" };
   doc.autoTable({ ...base, startY: y, rowPageBreak: "avoid", pageBreak: doc.internal.pageSize.getHeight() - y < 90 ? "always" : "auto",
-    body: [["Submitted by Staff", "Signature :", `Date : ${data.submit || ""}`, "Checked by Senior Manager", "Signature :", "Date :"], ["Approved by Manager / HOD", "Signature :", "Date :", "Approved by Tax MD", "Signature :", "Date :"]],
+    body: [["Submitted by Staff", SI.staffSig, SI.staffDate, "Checked by Senior Manager", "Signature :", "Date :"], ["Approved by Manager / HOD", SI.mgrSig, SI.mgrDate, "Approved by Tax MD", "Signature :", "Date :"]],
     styles: { ...base.styles, ...sig }, columnStyles: { 0: { fontStyle: "bold", fillColor: head, cellWidth: 92 }, 3: { fontStyle: "bold", fillColor: head, cellWidth: 110 } } });
   const pages = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pages; i++) { doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(120);
@@ -2189,6 +2230,7 @@ function timesheetPreviewHtml(data, esc){
   const week = data.days.reduce((a, d) => a + TS.dayMins(d), 0);
   return `<div class="tsp">
     <div class="tsp-t">Weekly Time-sheet</div><div class="tsp-red">* Time sheet need to be verified by Tax Manager of the Branch on the next working day *</div>
+    <div class="tsp-banner" style="color:#${tsSignInfo(data).color.slice(2)}">${esc(tsSignInfo(data).banner)}</div>
     <div class="tsp-meta"><b>Staff name:</b> ${esc(data.name)} &nbsp; · &nbsp; <b>Duration:</b> ${TS.dmy(data.from)} – ${TS.dmy(data.to)} &nbsp; · &nbsp; <b>Week total:</b> ${TS.hm(week)}</div>
     <table><thead><tr><th colspan="2" class="l">Case ready for preparation of tax computation</th><th>Invoice issued - Form C</th><th>Others</th></tr></thead><tbody>
     ${[...Array(Math.max(5, data.cases.length))].map((_, k) => `<tr><td class="c n">${k + 1}</td><td>${esc(data.cases[k] || "")}</td><td></td><td></td></tr>`).join("")}</tbody></table>
@@ -2502,7 +2544,42 @@ function tsWeekDays(){ const ws = weekStart(parse($("#tsWeek").value || ymd(new 
 function syncTs(){ const d = tsWeekDays(); const m = memberById($("#tsWho").value);
   const n = m ? state.items.filter(i => i.memberId === m.id && i.date >= d[0] && i.date <= d[6]).length : 0;
   $("#tsNote").textContent = `Week ${niceDate(d[0])} – ${niceDate(d[4])} · ${n} task${n === 1 ? "" : "s"} · lunch (1–2 pm) is added on working days.`;
-  const data = timesheetData(); $("#tsPreview").innerHTML = data ? timesheetPreviewHtml(data, esc) : ""; }
+  const rec = m ? tsRec(m.id, d[0]) : null; const ended = weekEnded(d[0]);
+  const mine = m && meMember()?.id === m.id; const canSubmit = m && (mine || canEditFor(m.id));
+  $("#tsStatus").innerHTML = !m ? "" : rec?.status === "signed" ? `<span class="pill st-done">✅ Signed off</span> by <b>${esc(rec.signed_name || "")}</b> on ${esc(fmtStamp(rec.signed_at))} · submitted by ${esc(rec.submitted_name || "")} on ${esc(fmtStamp(rec.submitted_at))}. <b>Locked — cannot be amended.</b>`
+    : rec ? `<span class="pill st-progress">✍ Submitted</span> by <b>${esc(rec.submitted_name || "")}</b> on ${esc(fmtStamp(rec.submitted_at))} — waiting for sign-off${canSignFor(m.id) ? " by you" : " by their manager"}.`
+    : ended ? `<span class="pill st-blocked" style="background:#fff2d9;color:#b45309">Not submitted</span> This week has ended — ${mine ? "please check your tasks and submit it for sign-off" : "waiting for " + esc(m.name) + " to submit it"}.`
+    : `<span class="pill st-planned">Week in progress</span> It can be submitted for sign-off after ${niceDate(d[6])}.`;
+  $("#tsSubmit").style.display = canSubmit && ended && rec?.status !== "signed" ? "" : "none"; $("#tsSubmit").textContent = rec ? "✍ Re-submit (update)" : "✍ Submit for sign-off";
+  $("#tsSign").style.display = rec?.status === "submitted" && canSignFor(m.id) ? "" : "none";
+  $("#tsWithdraw").style.display = rec?.status === "submitted" && canSubmit ? "" : "none";
+  const pend = pendingSignoffs();
+  $("#tsPending").innerHTML = pend.length ? `<div class="nudge" style="margin:0 0 8px"><b>${pend.length} timesheet${pend.length > 1 ? "s" : ""} waiting for your sign-off</b>${pend.map(t => `<button class="btn" style="margin:4px 6px 0 0" data-ts-pick="${esc(t.member_id)}|${esc(t.week_start)}">${esc(memberName(t.member_id))} · ${niceDate(t.week_start)}</button>`).join("")}</div>` : "";
+  const data = rec ? { ...rec.snapshot, _rec: rec } : timesheetData(); $("#tsPreview").innerHTML = data ? timesheetPreviewHtml(data, esc) : ""; }
+async function submitTimesheet(){
+  const m = memberById($("#tsWho").value); const d = tsWeekDays(); if (!m) return;
+  const snap = timesheetData(); delete snap._label;
+  const id = `${m.id}|${d[0]}`; const rec = tsRec(m.id, d[0]);
+  if (!(await confirmBox(rec ? "Re-submit this timesheet?" : "Submit timesheet for sign-off?", `${m.name} · week of ${niceDate(d[0])}. The ${snap.days.reduce((a, x) => a + x.rows.filter(r => !r.lunch).length, 0)} task entries as they are now will be sent to the manager to sign off. Once signed off, that week is locked and cannot be amended.`, rec ? "Re-submit" : "Submit"))) return;
+  const { error } = rec ? await sb.from("timesheets").update({ snapshot: snap, status: "submitted" }).eq("id", id) : await sb.from("timesheets").insert({ id, member_id: m.id, week_start: d[0], status: "submitted", snapshot: snap });
+  if (error) return $("#tsErr").textContent = "Couldn't submit: " + error.message;
+  await loadTimesheets(); syncTs(); toast("Timesheet submitted for sign-off");
+  logChange({ kind: "auth", action: "ts_submit", after: { title: `Timesheet ${m.name} · week of ${niceDate(d[0])}` } }).catch(()=>{});
+}
+async function signTimesheet(){
+  const m = memberById($("#tsWho").value); const d = tsWeekDays(); const rec = m && tsRec(m.id, d[0]); if (!rec) return;
+  if (!(await confirmBox("Sign off this timesheet?", `${m.name} · week of ${niceDate(d[0])}. Signing off locks the timesheet and all of that week's tasks permanently — nobody can amend them afterwards.`, "Sign off"))) return;
+  const { error } = await sb.from("timesheets").update({ status: "signed" }).eq("id", rec.id);
+  if (error) return $("#tsErr").textContent = "Couldn't sign off: " + error.message;
+  await loadTimesheets(); syncTs(); render(); toast("Timesheet signed off ✅"); confetti(40);
+  logChange({ kind: "auth", action: "ts_signed", after: { title: `Timesheet ${m.name} · week of ${niceDate(d[0])}` } }).catch(()=>{});
+}
+async function withdrawTimesheet(){
+  const m = memberById($("#tsWho").value); const d = tsWeekDays(); const rec = m && tsRec(m.id, d[0]); if (!rec) return;
+  if (!(await confirmBox("Withdraw this submission?", "The timesheet goes back to not submitted so the tasks can be corrected and submitted again.", "Withdraw"))) return;
+  const { error } = await sb.from("timesheets").delete().eq("id", rec.id); if (error) return $("#tsErr").textContent = "Couldn't withdraw: " + error.message;
+  await loadTimesheets(); syncTs(); toast("Submission withdrawn");
+}
 function timesheetData(){
   const m = memberById($("#tsWho").value); if (!m) return null;
   const days7 = tsWeekDays();
@@ -2528,13 +2605,15 @@ function timesheetData(){
   return data;
 }
 async function downloadTimesheet(kind){
-  const data = timesheetData(); if (!data) return $("#tsErr").textContent = "Pick a staff member.";
+  const mm = memberById($("#tsWho").value); const dd = tsWeekDays(); const rec = mm && tsRec(mm.id, dd[0]);
+  const live = timesheetData(); if (!live) return $("#tsErr").textContent = "Pick a staff member.";
+  const data = rec ? { ...rec.snapshot, _label: live._label, _rec: rec } : live;
   const btn = $(kind === "pdf" ? "#tsPdf" : "#tsGo"); btn.disabled = true; $("#tsErr").textContent = "";
   try {
     let buf;
     if (kind === "pdf") { let J; try { J = await loadJsPDF(); } catch (_) { throw new Error("Couldn't load the PDF tools — check your connection and try again"); } buf = buildTimesheetPdf(J, data); }
     else { let X; try { X = await loadExcelJS(); } catch (_) { throw new Error("Couldn't load the Excel tools — check your connection and try again"); } buf = await buildTimesheetXlsx(X, data); }
-    await downloadsApi.save({ filename: `Timesheet - ${data.name} - ${data._label}.${kind === "pdf" ? "pdf" : "xlsx"}`, data: new Uint8Array(buf) });
+    await downloadsApi.save({ filename: `Timesheet - ${data.name} - ${data._label}${rec?.status === "signed" ? " - SIGNED" : rec ? " - submitted" : " - DRAFT"}.${kind === "pdf" ? "pdf" : "xlsx"}`, data: new Uint8Array(buf) });
     toast(kind === "pdf" ? "Timesheet PDF downloaded" : "Timesheet Excel downloaded");
   } catch (e) { if (e?.code === "declined") return; $("#tsErr").textContent = e.message || "Couldn't create the timesheet."; }
   finally { btn.disabled = false; }
@@ -2946,7 +3025,7 @@ function openTask(item, preset={}, override={}){
   const ed = editableMembers();
   if (!item && !ed.length) { toast(state.members.length ? "You can't add tasks for these people" : "Add a team member first"); return; }
   editingItem = item || null;
-  const canEd = item ? canEditFor(item.memberId) : true;
+  let canEd = item ? canEditFor(item.memberId) : true;
   const f = $("#taskForm");
   const opts = item && !canEd ? sortedMembers().filter(m => m.id === item.memberId) : ed;
   f.memberId.innerHTML = item ? opts.map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.private ? " (private)" : ""}</option>`).join("") : assignOptions("", ed);
@@ -2961,6 +3040,8 @@ function openTask(item, preset={}, override={}){
   f.repeat.value = "0";
   $("#repeatWrap").style.display = item ? "none" : "";
   $("#taskTitle").textContent = item ? (canEd ? "Edit task" : "Task details") : "New task";
+  if (item && weekSigned(item.memberId, item.date)) { canEd = false; $("#taskTitle").textContent = "Task details (signed off)"; }
+  $("#taskLocked").style.display = item && weekSigned(item.memberId, item.date) ? "" : "none";
   $("#delTask").style.display = item && canEd && canDeleteWork() ? "" : "none";
   $("#cancelTask").style.display = item && canEd && canCancelWork() && item.status !== "cancelled" ? "" : "none";
   const oc = $("#optCancelled"); oc.hidden = oc.disabled = !(canCancelWork() || item?.status === "cancelled");
@@ -3279,6 +3360,11 @@ document.addEventListener("click", e => {
   const tw = t.closest("[data-tsweek]"); if (tw) { $("#tsWeek").value = ymd(addDays(new Date(), 7 * +tw.dataset.tsweek)); syncTs(); return; }
   if (t.closest("#tsGo")) { downloadTimesheet("xlsx"); return; }
   if (t.closest("#tsPdf")) { downloadTimesheet("pdf"); return; }
+  if (t.closest("#tsSubmit")) { submitTimesheet(); return; }
+  const tw2 = t.closest("[data-ts-open-week]"); if (tw2) { const [mid, ws] = tw2.dataset.tsOpenWeek.split("|"); openTimesheet(); if (!$("#tsWho").querySelector(`option[value="${CSS.escape(mid)}"]`)) $("#tsWho").insertAdjacentHTML("beforeend", `<option value="${esc(mid)}">${esc(memberName(mid))}</option>`); $("#tsWho").value = mid; $("#tsWeek").value = ws; syncTs(); return; }
+  if (t.closest("#tsSign")) { signTimesheet(); return; }
+  if (t.closest("#tsWithdraw")) { withdrawTimesheet(); return; }
+  const tp = t.closest("[data-ts-pick]"); if (tp) { const [mid, ws] = tp.dataset.tsPick.split("|"); if (!$("#tsWho").querySelector(`option[value="${CSS.escape(mid)}"]`)) $("#tsWho").insertAdjacentHTML("beforeend", `<option value="${esc(mid)}">${esc(memberName(mid))}</option>`); $("#tsWho").value = mid; $("#tsWeek").value = ws; syncTs(); return; }
   const tm = t.closest("[data-tlmode]"); if (tm) { state.tlMode = tm.dataset.tlmode; render(); return; }
   const md = t.closest("[data-mday]"); if (md) { state.date = parse(md.dataset.mday); state.tlMode = "day"; render(); return; }
 
