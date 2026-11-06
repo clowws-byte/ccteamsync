@@ -376,6 +376,8 @@ tr.jcancel td{opacity:.55}tr.jcancel td a{text-decoration:line-through}
 .jobtime{padding:10px 12px;border-radius:12px;background:var(--soft);font-size:13px}.jt-row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.jt-chip{background:var(--panel);border-radius:999px;padding:3px 10px;font-size:12px}
 .upsteps{display:grid;gap:8px;font-size:13.5px}.upsteps>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 tr.uperr td{background:#fde2e4}
+.acct td,.acct th{white-space:nowrap}.acct input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+.acct tr.accgrp td{background:var(--soft);font-weight:800;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -502,6 +504,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <button data-v="team">Team</button>
       <button data-v="log">Log book</button>
       <button data-v="admin">Functions</button>
+      <button data-v="access">Access settings</button>
     </nav>
     <div class="spacer"></div>
     <div class="datenav">
@@ -553,6 +556,15 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
   <section class="view" id="v-mine"><div id="mine"></div></section>
 
   <!-- CLIENT JOBS -->
+  <section class="view" id="v-access">
+    <div class="card">
+      <div class="hd"><h3>🔐 Access settings — who can see which tab and use which function</h3></div>
+      <div class="bd" style="overflow-x:auto">
+        <p class="muted" style="margin:0 0 10px;font-size:13px">Tick to allow, untick to hide, for each role. Changes save straight away and apply when people next open or refresh the app. You (Administrator) and anyone with <b>Full access</b> always see everything. Whatever is ticked here, people still only see the <b>data</b> they're allowed to (their own work, people below them, and their team's tickets).</p>
+        <table class="admt acct" id="accTable"></table>
+      </div>
+    </div>
+  </section>
   <section class="view" id="v-summary">
     <div class="card">
       <div class="hd" style="flex-wrap:wrap;gap:8px"><h3>Job summary</h3>
@@ -934,7 +946,7 @@ function assignOptions(sel, mine, allowAdmin = false){
     + (others.length ? `<optgroup label="Other people">${others.map(d => `<option value="${esc(d.id)}" ${d.id === sel ? "selected" : ""}>${esc(lab(d.name, d.branch))}</option>`).join("")}</optgroup>` : "");
 }
 const canCancelWork = () => !!state.isOwner || isMgmt(normAccess(meMember()?.access));   // tasks
-const canCancelJob = () => !!meMember() || !!state.isOwner;                                    // jobs: any staff member
+const canCancelJob = () => !!state.isOwner || (!!meMember() && canUse("f_canceljob"));                                    // jobs: any staff member
 const jobClosed = j => j?.stage === "done" || j?.stage === "cancelled";
 const DAY_START = 7, DAY_END = 21, WORKDAY_H = 8;
 const $ = s => document.querySelector(s);
@@ -947,7 +959,7 @@ const mins = t => { if(!t) return 0; const [h,m] = t.split(":").map(Number); ret
 const hrs = m => { const h = m/60; return (Math.round(h*10)/10) + "h"; };
 const weekStart = d => { const x = new Date(d); const dow = (x.getDay()+6)%7; x.setDate(x.getDate()-dow); x.setHours(0,0,0,0); return x; };
 const initials = n => String(n||"?").trim().split(/\s+/).map(p=>p[0]).slice(0,2).join("").toUpperCase();
-const VIEWS = ["dashboard","mine","jobs","summary","timeline","calendar","team","log","admin"];
+const VIEWS = ["dashboard","mine","jobs","summary","timeline","calendar","team","log","admin","access"];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
 
 const state = {
@@ -974,6 +986,39 @@ function supervisorsFor(m, access){
     .sort((a, b) => rank(normAccess(a.access)) - rank(normAccess(b.access)) || String(a.name).localeCompare(b.name));
 }
 const supOptions = (list, sel, access) => (normAccess(access) === "hod" ? `<option value="">— Top level (reports to no one)</option>` : `<option value="">— Not assigned</option>`) + list.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? "selected" : ""}>${esc(x.name)} · ${esc(roleLabel(normAccess(x.access)))}</option>`).join("");
+// ---------- access settings: which role sees which tab / function ----------
+const ACCESS_ITEMS = [
+  ["Tabs", "dashboard", "Dashboard"], ["Tabs", "mine", "My week"], ["Tabs", "jobs", "Client jobs"], ["Tabs", "summary", "Summary"],
+  ["Tabs", "timeline", "Timeline"], ["Tabs", "calendar", "Calendar"], ["Tabs", "team", "Team"],
+  ["Functions", "f_newtask", "+ New task"], ["Functions", "f_newjob", "+ New job"], ["Functions", "f_upload", "Upload jobs (Excel)"],
+  ["Functions", "f_export", "Export to Excel"], ["Functions", "f_outstanding", "Outstanding list"], ["Functions", "f_timesheet", "Timesheet download"],
+  ["Functions", "f_canceljob", "Cancel job"]];
+const ACCESS_ROLES = ROLES.slice(1);   // HOD … Associate
+function accessDefault(key, r){ if (key === "team") return isMgmt(r); return true; }
+function canUse(key){
+  if (state.isOwner) return true;
+  const me = meMember(); if (!me) return key === "mine";
+  const r = normAccess(me.access); const v = state.accessCfg?.[key]?.[r];
+  if (v === undefined) return key === "team" ? isManagerish() : accessDefault(key, r);
+  return !!v;
+}
+function renderAccess(){
+  const cfg = state.accessCfg || {};
+  let grp = "";
+  $("#accTable").innerHTML = `<tr><th>Tab / function</th><th class="c">Administrator &amp;<br>Full access</th>${ACCESS_ROLES.map(([, l]) => `<th class="c">${l}</th>`).join("")}</tr>`
+    + ACCESS_ITEMS.map(([g, key, label]) => (g !== grp ? (grp = g, `<tr class="accgrp"><td colspan="${2 + ACCESS_ROLES.length}">${g}</td></tr>`) : "")
+      + `<tr><td><b>${esc(label)}</b></td><td class="c"><input type="checkbox" checked disabled title="Always allowed"></td>${ACCESS_ROLES.map(([r]) => { const v = cfg[key]?.[r]; const on = v === undefined ? accessDefault(key, r) : !!v;
+        return `<td class="c"><input type="checkbox" data-acc="${key}" data-role="${r}" ${on ? "checked" : ""}></td>`; }).join("")}</tr>`).join("")
+    + `<tr class="accgrp"><td colspan="${2 + ACCESS_ROLES.length}">Always Administrator &amp; Full access only</td></tr><tr><td class="muted">Log book · Functions · Access settings · Delete</td><td class="c"><input type="checkbox" checked disabled></td>${ACCESS_ROLES.map(() => `<td class="c"><input type="checkbox" disabled></td>`).join("")}</tr>`;
+}
+async function setAccess(key, r, on){
+  const next = JSON.parse(JSON.stringify(state.accessCfg || {})); next[key] = { ...(next[key] || {}), [r]: on };
+  if (!on && ACCESS_ITEMS.some(([g, k]) => g === "Tabs" && k === key) && ACCESS_ITEMS.filter(([g]) => g === "Tabs").every(([, k]) => (next[k]?.[r] ?? accessDefault(k, r)) === false)) { toast("Each role needs at least one tab"); return renderAccess(); }
+  const { error } = await sb.from("config").upsert({ id: "tabAccess", data: next });
+  if (error) { toast("Couldn't save: " + error.message); return renderAccess(); }
+  state.accessCfg = next; toast(`${roleLabel(r)} · ${ACCESS_ITEMS.find(x => x[1] === key)[2]}: ${on ? "allowed" : "hidden"}`);
+}
+
 // ---------- branches ----------
 const BRANCHES = [["KN01","Kuantan"],["KT01","Kuala Terengganu"],["PG01","Penang"],["TP01","Taiping"],["IP01","Ipoh"],["HQ01","Headquarter"],["HQ02","Headquarter"],["HQ03","Headquarter"],
   ["CS01","Cheras Selatan"],["PI01","Pandan Indah"],["KP01","Kepong"],["NS01","Seremban 1"],["NS02","Seremban 2"],["LK01","Lukut"],["MK01","Melaka"],["BP01","Batu Pahat"],["JB01","Johor Bahru"],["SB01","Sabah"],["LB01","Labuan"]];
@@ -1096,8 +1141,8 @@ async function loadAll(){
   raw.items = i.filter(x => x._p !== "1"); raw.pitems = i.filter(x => x._p === "1");
   raw.jobs = j;
   try { const { data: dir } = await sb.rpc("staff_directory"); state.directory = dir || []; } catch(_) { state.directory = []; }
-  try { const { data: cf } = await sb.from("config").select("id,data").in("id", ["roleRights", "features"]);
-    const by = Object.fromEntries((cf || []).map(r => [r.id, r.data])); state.roleRights = by.roleRights || {}; state.fullAccessReady = !!by.features?.fullAccess; } catch(_) {}
+  try { const { data: cf } = await sb.from("config").select("id,data").in("id", ["roleRights", "features", "tabAccess"]);
+    const by = Object.fromEntries((cf || []).map(r => [r.id, r.data])); state.roleRights = by.roleRights || {}; state.accessCfg = by.tabAccess || {}; state.fullAccessReady = !!by.features?.fullAccess; } catch(_) {}
   identify(); derive();
   await loadLog();
 }
@@ -1216,7 +1261,7 @@ function pickDefaultView(){
   if (state.defaultViewSet || state.mode !== "db") return;
   state.defaultViewSet = true;
   if (VIEWS.includes(location.hash.slice(1))) return;
-  if (!isManagerish()) state.view = "mine";
+  if (!isManagerish() && canUse("mine")) state.view = "mine";
 }
 
 // ---------- selectors ----------
@@ -1323,23 +1368,29 @@ function render(){
   if (sm) $("#acctBtn").textContent = `👤 ${sm.private ? "Administrator" : sm.name.split(" ")[0]} ▾`;
   const r = role();
   if (r === "none" && state.session && state.view !== "mine") state.view = "mine";
-  if (state.session && state.mode !== "loading" && (((state.view === "log" || state.view === "admin") && !state.isOwner) || (state.view === "team" && !isManagerish()))) state.view = "dashboard";
+  const tabOk = v => (v === "log" || v === "admin" || v === "access") ? state.isOwner : canUse(v);
+  if (state.session && state.mode !== "loading" && r !== "none" && !tabOk(state.view)) state.view = VIEWS.find(tabOk) || "mine";
   document.querySelectorAll("#tabs button").forEach(b => {
     const v = b.dataset.v;
-    b.style.display = ((v === "log" || v === "admin") && !state.isOwner) || (v === "team" && !isManagerish()) || (r === "none" && state.mode === "db" && v !== "mine") ? "none" : "";
+    b.style.display = !tabOk(v) || (r === "none" && state.mode === "db" && v !== "mine") ? "none" : "";
     b.classList.toggle("on", v === state.view);
   });
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-"+state.view));
-  $("#addBtn").style.display = editableMembers().length ? "" : "none";
-  $("#tlExport").style.display = downloadsApi ? "" : "none"; $("#exportJobs").style.display = downloadsApi ? "" : "none";
+  $("#addBtn").style.display = editableMembers().length && canUse("f_newtask") ? "" : "none";
+  $("#tlExport").style.display = downloadsApi && canUse("f_export") ? "" : "none"; $("#exportJobs").style.display = downloadsApi && canUse("f_export") ? "" : "none";
+  $("#addJob").style.display = canUse("f_newjob") ? "" : "none"; $("#upJobsBtn").style.display = canUse("f_upload") ? "" : "none";
+  $("#sumXlsx").style.display = canUse("f_export") ? "" : "none";
+  document.querySelectorAll("[data-os-open]").forEach(b => b.style.display = canUse("f_outstanding") ? "" : "none");
+  document.querySelectorAll("[data-ts-open]").forEach(b => b.style.display = canUse("f_timesheet") ? "" : "none");
   $("#addMember").style.display = state.isOwner && state.canWrite ? "" : "none";
   $("#clearDemo").style.display = state.isOwner && (state.allMembers.some(m=>m.demo) || state.allItems.some(i=>i.demo) || state.allJobs.some(j=>j.demo)) ? "" : "none";
   renderSchedBar(); greet(); onViewEnter();
   const tb = document.querySelector('#tabs button[data-v="team"]'); if (tb) { const n = state.isOwner ? (state.pendingMembers || []).length : 0; tb.innerHTML = "Team" + (n ? ` <span class="tabbadge">${n}</span>` : ""); }
-  $(".datenav").style.visibility = (["jobs","summary","team","log","admin"].includes(state.view)) ? "hidden" : "";
+  $(".datenav").style.visibility = (["jobs","summary","team","log","admin","access"].includes(state.view)) ? "hidden" : "";
 
   if (state.view === "log") return renderLog();
   if (state.view === "admin") return renderAdmin();
+  if (state.view === "access") return renderAccess();
   if (state.view === "jobs" && state.mode !== "loading") return renderJobs();
   if (state.view === "summary" && state.mode !== "loading") return renderSummary();
   if (state.view === "mine" && r === "none") return renderMine();
@@ -1702,7 +1753,7 @@ function renderJobs(){
     k("Submitted this month", vis.filter(j => j.stage === "done" && (j.doneAt || "") >= mStart).length, `${open.length} open job${open.length===1?"":"s"}`);
   const rows = filteredJobs();
   const nAct = countActive("j");
-  $("#addJob").style.display = state.canWrite && editableMembers().length ? "" : "none";
+  $("#addJob").style.display = state.canWrite && canUse("f_newjob") ? "" : "none"; $("#upJobsBtn").style.display = state.canWrite && canUse("f_upload") ? "" : "none";
   $("#jobTable").innerHTML = `<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Filing</th><th>Planned completion</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
     const d = dueInfo(j);
     return `<tr class="${j.stage === "cancelled" ? "jcancel" : ""}"><td><span class="ticket">${j.ticket ? esc(j.ticket) : `<span class="muted" title="Assigned when saved">…</span>`}</span></td><td>${branchTag(j.branch) || '<span class="muted">—</span>'}</td><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
@@ -3218,6 +3269,7 @@ document.addEventListener("click", e => {
   if (t.closest("[data-os-open]")) { openOutstanding(); return; }
   const sm = t.closest("[data-summode]"); if (sm) { state.sumMode = sm.dataset.summode; renderSummary(); return; }
   if (t.closest("#sumXlsx")) { summaryXlsx(); return; }
+  const ac = t.closest("[data-acc]"); if (ac) { setAccess(ac.dataset.acc, ac.dataset.role, ac.checked); return; }
   if (t.closest("#upJobsBtn")) { upRows = []; $("#upFile").value = ""; $("#upPreview").innerHTML = ""; $("#upNote").textContent = ""; $("#upErr").textContent = ""; $("#upGo").disabled = true; $("#upGo").textContent = "Create jobs"; $("#upScrim").classList.add("on"); return; }
   if (t.closest("#upTpl")) { downloadUploadTemplate(); return; }
   if (t.closest("#upGo")) { createUploadedJobs(); return; }
