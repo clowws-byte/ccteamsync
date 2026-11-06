@@ -370,6 +370,12 @@ select.brsel{max-width:150px}
 .reviewer-list label{display:flex;gap:6px;align-items:center;font-size:13px;font-weight:600;color:var(--ink)}
 .revnames{font-size:12px;color:var(--muted);max-width:180px}
 tr.jcancel td{opacity:.55}tr.jcancel td a{text-decoration:line-through}
+.sumt th{white-space:nowrap;font-size:12px}.sumt td.stc{min-width:62px}.sumt tr[data-job]{cursor:pointer}.sumt tr[data-job]:hover td{background:rgba(139,123,255,.06)}
+.stdot{font-size:18px;line-height:1;background:none!important;-webkit-text-stroke:0}.stdot.stg-todo{color:#9ca3af}.stdot.stg-prep{color:#2563eb}.stdot.stg-review{color:#d97706}.stdot.stg-draft{color:#7c3aed}.stdot.stg-invoicing{color:#ea580c}.stdot.stg-done{color:#16a34a}.stdot.stg-changes{color:#dc2626}.stdot.stg-cancelled{color:#9ca3af}
+.sumtot td{font-weight:800;background:var(--soft)}
+.jobtime{padding:10px 12px;border-radius:12px;background:var(--soft);font-size:13px}.jt-row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.jt-chip{background:var(--panel);border-radius:999px;padding:3px 10px;font-size:12px}
+.upsteps{display:grid;gap:8px;font-size:13.5px}.upsteps>div{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+tr.uperr td{background:#fde2e4}
 /* ===== Playful theme (energetic + cute) ===== */
 :root{
   --bg:#fff8f3;--panel:#ffffff;--ink:#2b2340;--muted:#7c7393;--line:#efe6f5;--soft:#f7f1fb;
@@ -490,6 +496,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <button data-v="dashboard" class="on">Dashboard</button>
       <button data-v="mine">My week</button>
       <button data-v="jobs">Client jobs</button>
+      <button data-v="summary">Summary</button>
       <button data-v="timeline">Timeline</button>
       <button data-v="calendar">Calendar</button>
       <button data-v="team">Team</button>
@@ -546,6 +553,19 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
   <section class="view" id="v-mine"><div id="mine"></div></section>
 
   <!-- CLIENT JOBS -->
+  <section class="view" id="v-summary">
+    <div class="card">
+      <div class="hd" style="flex-wrap:wrap;gap:8px"><h3>Job summary</h3>
+        <div class="seg" id="sumMode"><button data-summode="status" class="on">Job status</button><button data-summode="time">Time by job</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
+          <select class="f" id="sumType"></select><select class="f" id="sumBranch"></select><select class="f" id="sumYA"></select>
+          <label class="chk" style="font-size:13px"><input type="checkbox" id="sumClosed"> Include submitted &amp; cancelled</label>
+          <div class="searchbox"><span>⌕</span><input id="sumQ" placeholder="Search client, ticket, people…" autocomplete="off"></div>
+          <button class="btn" id="sumXlsx">⬇ Excel</button>
+        </div></div>
+      <div class="bd" style="overflow-x:auto"><table class="admt sumt" id="sumTable"></table><div class="muted" id="sumNote" style="font-size:12px;margin-top:8px"></div></div>
+    </div>
+  </section>
   <section class="view" id="v-jobs">
     <div class="grid kpis" id="jobStats" style="margin-bottom:16px"></div>
     <div class="card">
@@ -554,11 +574,12 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
           <div class="searchbox"><span>⌕</span><input id="jobQ" placeholder="Search client, filing, notes, people…" autocomplete="off"></div>
           <button class="btn" data-os-open>📋 Outstanding list…</button>
           <button class="btn" id="exportJobs" data-export-open="jobs">⬇ Export to Excel…</button>
+          <button class="btn" id="upJobsBtn">⬆ Upload jobs (Excel)…</button>
           <button class="btn primary" id="addJob">+ New job</button>
         </div></div>
       <div class="fbar inner"><div class="ms-row" id="jobMs"></div><span class="muted" id="jobCount" style="font-size:12px;margin-left:auto"></span><div class="chips" id="jobChips"></div></div>
       <div class="bd" style="overflow-x:auto"><table class="admt" id="jobTable"></table></div>
-      <div class="legend"><span>Flow: <b>Not started → In progress → In review → Draft sent → Invoicing → Submitted / filed</b> (or back to <b>Changes requested</b>)</span><span>Suggested due dates follow LHDN rules — always verify against the latest filing programme.</span></div>
+      <div class="legend"><span>Flow: <b>Not started → In progress → In review → Draft sent → Invoicing → Submitted / filed</b> (or back to <b>Changes requested</b>)</span><span>Suggested statutory dates follow LHDN rules — always verify against the latest filing programme.</span></div>
     </div>
   </section>
 
@@ -723,9 +744,10 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         <label class="fl">Year of assessment<input name="ya" maxlength="4" inputmode="numeric" placeholder="2026"></label>
       </div>
       <label class="fl">Branch<select name="branch"></select></label>
+      <div id="jobTime" class="jobtime" style="display:none"></div>
       <div class="row2">
         <label class="fl" id="refWrap"><span id="refLbl">Financial year end</span><input type="date" name="refDate"></label>
-        <label class="fl">Due date<input type="date" name="dueDate"></label>
+        <label class="fl">Planned completion date<input type="date" name="dueDate"></label>
       </div>
       <div class="muted" id="dueHint" style="font-size:12px;line-height:1.5"></div>
       <div class="row2">
@@ -826,7 +848,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
     <div class="bd">
       <div class="presets" id="xpPresets"></div>
       <div class="row2"><label class="fl" id="xpFromL">From<input type="date" id="xpFrom"></label><label class="fl" id="xpToL">To<input type="date" id="xpTo"></label></div>
-      <label class="chk" id="xpAllWrap" style="display:none"><input type="checkbox" id="xpAll"> All due dates (ignore the dates above)</label>
+      <label class="chk" id="xpAllWrap" style="display:none"><input type="checkbox" id="xpAll"> All planned completion dates (ignore the dates above)</label>
       <div class="muted" id="xpNote" style="font-size:12.5px"></div><div class="err" id="xpErr" style="color:var(--bad);font-size:13px"></div>
     </div>
     <div class="ft"><button class="btn" data-close>Cancel</button><button class="btn primary" id="xpGo">⬇ Export</button></div>
@@ -855,14 +877,31 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         <label class="fl">Staff<select id="osWho"></select><span class="chk" style="font-weight:600;margin-top:4px"><input type="checkbox" id="osTeam" checked> Include the people under them</span></label>
         <label class="fl">Branch<select id="osBranch"></select></label>
         <label class="fl">Show<select id="osWhat"><option value="both">Jobs and tasks</option><option value="jobs">Outstanding jobs only</option><option value="tasks">Outstanding tasks only</option></select></label>
-        <label class="fl">Jobs due up to<input type="date" id="osUpTo"></label>
-        <label class="fl">Group by<select id="osGroup"><option value="none">Due date</option><option value="prep">Preparer</option><option value="type">Job type</option><option value="branch">Branch</option></select></label>
+        <label class="fl">Planned completion up to<input type="date" id="osUpTo"></label>
+        <label class="fl">Group by<select id="osGroup"><option value="none">Planned completion date</option><option value="prep">Preparer</option><option value="type">Job type</option><option value="branch">Branch</option></select></label>
       </div>
       <div class="muted" id="osNote" style="font-size:12.5px"></div>
       <div id="osPreview" class="tsp-wrap"></div>
       <div class="err" id="osErr" style="color:var(--bad);font-size:13px"></div>
     </div>
     <div class="ft"><button class="btn left" data-close>Close</button><button class="btn" id="osPdf">⬇ PDF</button><button class="btn primary" id="osXlsx">⬇ Excel</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="upScrim">
+  <div class="modal" style="width:min(1000px,96vw)">
+    <div class="hd"><h3>⬆ Upload jobs from Excel</h3><button type="button" class="btn icon" data-close>✕</button></div>
+    <div class="bd">
+      <div class="upsteps">
+        <div><b>1.</b> Download the template, fill one row per job (keep the headings). <button class="btn" id="upTpl">⬇ Download template</button></div>
+        <div><b>2.</b> Upload the filled file. <input type="file" id="upFile" accept=".xlsx,.xls,.csv"></div>
+        <div><b>3.</b> Check the preview, then create all jobs in one go. Ticket numbers are given automatically.</div>
+      </div>
+      <div class="muted" id="upNote" style="font-size:12.5px"></div>
+      <div id="upPreview" style="overflow:auto;max-height:50vh"></div>
+      <div class="err" id="upErr" style="color:var(--bad);font-size:13px"></div>
+    </div>
+    <div class="ft"><button class="btn left" data-close>Close</button><button class="btn primary" id="upGo" disabled>Create jobs</button></div>
   </div>
 </div>
 <div class="scrim" id="tempScrim">
@@ -909,7 +948,7 @@ const mins = t => { if(!t) return 0; const [h,m] = t.split(":").map(Number); ret
 const hrs = m => { const h = m/60; return (Math.round(h*10)/10) + "h"; };
 const weekStart = d => { const x = new Date(d); const dow = (x.getDay()+6)%7; x.setDate(x.getDate()-dow); x.setHours(0,0,0,0); return x; };
 const initials = n => String(n||"?").trim().split(/\s+/).map(p=>p[0]).slice(0,2).join("").toUpperCase();
-const VIEWS = ["dashboard","mine","jobs","timeline","calendar","team","log","admin"];
+const VIEWS = ["dashboard","mine","jobs","summary","timeline","calendar","team","log","admin"];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
 
 const state = {
@@ -991,7 +1030,7 @@ async function commit(kind, id, after, opts = {}){
 }
 const FIELDS = {
   items: [["title","Task"],["memberId","Assigned to"],["jobId","Client job"],["date","Date"],["start","Start"],["end","End"],["status","Status"],["category","Type"],["notes","Notes"]],
-  jobs: [["client","Client"],["type","Filing"],["ya","YA"],["dueDate","Due"],["preparerId","Preparer"],["reviewerId","Reviewer"],["stage","Stage"],["notes","Notes"]],
+  jobs: [["client","Client"],["type","Filing"],["ya","YA"],["dueDate","Planned completion"],["preparerId","Preparer"],["reviewerId","Reviewer"],["stage","Stage"],["notes","Notes"]],
   members: [["name","Name"],["role","Job title"],["userId","Email"],["access","Access"],["managerId","Reports to"],["canEdit","Rights"],["isAdmin","Full access"],["branch","Branch"],["reviewers","Reviewers"],["seeTeam","Can see"],["loans","Loans"],["workStart","Hours from"],["workEnd","Hours to"],["private","Private"]],
 };
 function fmtVal(k, v){
@@ -1298,11 +1337,12 @@ function render(){
   $("#clearDemo").style.display = state.isOwner && (state.allMembers.some(m=>m.demo) || state.allItems.some(i=>i.demo) || state.allJobs.some(j=>j.demo)) ? "" : "none";
   renderSchedBar(); greet(); onViewEnter();
   const tb = document.querySelector('#tabs button[data-v="team"]'); if (tb) { const n = state.isOwner ? (state.pendingMembers || []).length : 0; tb.innerHTML = "Team" + (n ? ` <span class="tabbadge">${n}</span>` : ""); }
-  $(".datenav").style.visibility = (["jobs","team","log","admin"].includes(state.view)) ? "hidden" : "";
+  $(".datenav").style.visibility = (["jobs","summary","team","log","admin"].includes(state.view)) ? "hidden" : "";
 
   if (state.view === "log") return renderLog();
   if (state.view === "admin") return renderAdmin();
   if (state.view === "jobs" && state.mode !== "loading") return renderJobs();
+  if (state.view === "summary" && state.mode !== "loading") return renderSummary();
   if (state.view === "mine" && r === "none") return renderMine();
   if (state.mode !== "loading" && !state.members.length && state.view !== "team") return renderOnboard();
   if (state.view === "dashboard") renderDashboard();
@@ -1530,7 +1570,7 @@ function renderCalendar(){
     if (i >= 35 && day.getMonth() !== d.getMonth()) break;
     const list = itemsOn(ds); const wm = workMins(list);
     const dues = state.jobs.filter(j => j.dueDate === ds && !jobClosed(j) && jobMatchesSched(j));
-    const dueChips = dues.slice(0,2).map(j => `<div class="chip due" data-job="${esc(j.id)}" title="Due: ${esc(jobLabel(j))}">⚑ ${esc(j.client)} · ${esc(j.type)}</div>`).join("") + (dues.length > 2 ? `<div class="more" style="color:var(--bad)">+${dues.length-2} more due</div>` : "");
+    const dueChips = dues.slice(0,2).map(j => `<div class="chip due" data-job="${esc(j.id)}" title="Planned completion: ${esc(jobLabel(j))}">⚑ ${esc(j.client)} · ${esc(j.type)}</div>`).join("") + (dues.length > 2 ? `<div class="more" style="color:var(--bad)">+${dues.length-2} more due</div>` : "");
     const chips = dueChips + list.slice(0, dues.length ? 3 : 4).map(it => `<div class="chip ${it.status==="done"?"done":""} ${it.status==="cancelled"?"cancelled":""}" data-item="${esc(it.id)}" title="${esc(memberById(it.memberId)?.name)}: ${esc(it.title)}"><i style="background:${esc(color(it.memberId))}"></i>${esc(it.start)} ${esc(it.title)}</div>`).join("");
     html += `<div class="day ${day.getMonth()!==d.getMonth()?"out":""} ${isToday(ds)?"today":""} ${ds===sel?"sel":""}" data-date="${ds}">
       <div class="num"><b>${day.getDate()}</b>${wm?`<span class="hrs">${hrs(wm)}</span>`:""}</div>${chips}${list.length>4?`<div class="more">+${list.length-4} more</div>`:""}</div>`;
@@ -1615,7 +1655,7 @@ function suggestDue(type, ref, ya){
 }
 const refLabel = type => type === "Form C" || type === "TP documentation" ? "Financial year end" : type === "CP204" || type === "CP204A (revision)" ? "Basis period starts" : "";
 function dueInfo(j){
-  if (!j.dueDate) return { text: "No due date", cls: "muted", days: 9999 };
+  if (!j.dueDate) return { text: "No planned date", cls: "muted", days: 9999 };
   const days = Math.round((parse(j.dueDate) - parse(ymd(new Date()))) / 864e5);
   const date = parse(j.dueDate).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
   if (j.stage === "cancelled") return { text: `Cancelled · ${date}`, cls: "muted", days };
@@ -1664,7 +1704,7 @@ function renderJobs(){
   const rows = filteredJobs();
   const nAct = countActive("j");
   $("#addJob").style.display = state.canWrite && editableMembers().length ? "" : "none";
-  $("#jobTable").innerHTML = `<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Filing</th><th>Due</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
+  $("#jobTable").innerHTML = `<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Filing</th><th>Planned completion</th><th>Preparer</th><th>Reviewer</th><th>Stage</th><th>Scheduled</th><th></th></tr>` + (rows.map(j => {
     const d = dueInfo(j);
     return `<tr class="${j.stage === "cancelled" ? "jcancel" : ""}"><td><span class="ticket">${j.ticket ? esc(j.ticket) : `<span class="muted" title="Assigned when saved">…</span>`}</span></td><td>${branchTag(j.branch) || '<span class="muted">—</span>'}</td><td><a href="#" data-job="${esc(j.id)}" style="color:inherit;font-weight:600">${esc(j.client)}</a>${j.notes ? `<div class="muted" style="font-size:12px;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(j.notes)}</div>` : ""}</td>
       <td>${esc(j.type)}${j.ya ? `<div class="muted" style="font-size:12px">YA ${esc(j.ya)}</div>` : ""}</td>
@@ -1687,6 +1727,7 @@ function openJob(j, preset = {}){
   if (v.reviewerId && !f.reviewerId.querySelector(`option[value="${CSS.escape(v.reviewerId)}"]`)) f.reviewerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.reviewerId)}" selected>${esc(memberName(v.reviewerId))}</option>`);
   if (v.preparerId && !f.preparerId.querySelector(`option[value="${CSS.escape(v.preparerId)}"]`)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
+  $("#jobTime").style.display = j ? "" : "none"; if (j) $("#jobTime").innerHTML = jobTimeHtml(j);
   f.branch.innerHTML = branchOptions(v.branch || (!j ? (memberById(v.preparerId)?.branch || meMember()?.branch || "") : ""));
   const fillReviewers = keep => { const prepM = memberById(f.preparerId.value); const revIds = (prepM?.reviewers || []).filter(Boolean);
     const cur = keep ?? f.reviewerId.value; const base = assignOptions(cur, sortedMembers());
@@ -1711,7 +1752,7 @@ function syncJobForm(){
   const f = $("#jobForm"); const lbl = refLabel(f.type.value);
   $("#refWrap").style.display = lbl ? "" : "none"; $("#refLbl").textContent = lbl || "Reference date";
   const s = suggestDue(f.type.value, f.refDate.value, f.ya.value);
-  $("#dueHint").innerHTML = s ? `Suggested statutory date: <b>${esc(parse(s.date).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}))}</b> — ${esc(s.note)} ${f.dueDate.value !== s.date ? `<button type="button" class="linkbtn" id="useSuggest">Use this date</button>` : "✓"}<br><span style="font-size:11px">Always verify against LHDN's latest Return Form Filing Programme.</span>` : (lbl ? `Enter the ${lbl.toLowerCase()} to get a suggested due date.` : "Set the due date agreed for this job.");
+  $("#dueHint").innerHTML = s ? `Statutory deadline: <b>${esc(parse(s.date).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}))}</b> — ${esc(s.note)} ${f.dueDate.value !== s.date ? `<button type="button" class="linkbtn" id="useSuggest">Use this date</button>` : "✓"}<br><span style="font-size:11px">Always verify against LHDN's latest Return Form Filing Programme.</span>` : (lbl ? `Enter the ${lbl.toLowerCase()} to see the statutory deadline.` : "Set the planned completion date agreed for this job.");
   const u = $("#useSuggest"); if (u) u.onclick = () => { f.dueDate.value = s.date; syncJobForm(); };
 }
 async function jobAct(id, a){
@@ -1769,7 +1810,7 @@ const JF_DEFAULT_STAGE = ["todo","prep","review","draft","invoicing","changes","
 try { const sv = JSON.parse(localStorage.getItem("ts-filters") || "{}"); if (sv.F) Object.assign(F, sv.F); if (sv.JF) Object.assign(JF, sv.JF); } catch(_) {}
 const saveFilters = () => { try { localStorage.setItem("ts-filters", JSON.stringify({ F, JF })); } catch(_) {} };
 let openMs = null;
-const DUE_OPTS = [["overdue","Overdue"],["today","Due today"],["7","Within 7 days"],["30","Within 30 days"],["later","Later"],["none","No due date"]];
+const DUE_OPTS = [["overdue","Overdue"],["today","Due today"],["7","Within 7 days"],["30","Within 30 days"],["later","Later"],["none","No planned date"]];
 const dueBucket = j => { if (!j.dueDate) return "none"; const d = dueInfo(j).days; if (d < 0) return jobClosed(j) ? "past" : "overdue"; return d === 0 ? "today" : d <= 7 ? "7" : d <= 30 ? "30" : "later"; };
 const inDue = (j, sel) => !sel.length || sel.some(s => { const b = dueBucket(j); if (s === "30") return b === "30" || b === "7" || b === "today"; if (s === "7") return b === "7" || b === "today"; return b === s; });
 
@@ -1794,7 +1835,7 @@ function jobOptions(){
   };
 }
 const SCHED_LABELS = { people: "People", status: "Status", type: "Type", job: "Client job" };
-const JOB_LABELS = { stage: "Stage", branch: "Branch", due: "Due", type: "Filing", client: "Client", prep: "Preparer", rev: "Reviewer", ya: "YA" };
+const JOB_LABELS = { stage: "Stage", branch: "Branch", due: "Planned completion", type: "Filing", client: "Client", prep: "Preparer", rev: "Reviewer", ya: "YA" };
 
 function msHtml(scope, key, label, options, sel){
   const n = sel.length, many = options.length > 8;
@@ -1905,13 +1946,13 @@ function openExport(kind){
     ? [["This day", [ymd(d), ymd(d)]], ["This week", [ymd(weekStart(d)), ymd(addDays(weekStart(d), 6))]], ["This month", monthRange(d)], ["Last month", monthRange(d, -1)], ["This year", [`${d.getFullYear()}-01-01`, `${d.getFullYear()}-12-31`]]]
     : [["Next 30 days", [ymd(t), ymd(addDays(t, 30))]], ["This month", monthRange(t)], ["Next month", monthRange(t, 1)], ["This year", [`${t.getFullYear()}-01-01`, `${t.getFullYear()}-12-31`]]];
   $("#xpTitle").textContent = kind === "timeline" ? "Export timeline to Excel" : "Export client jobs to Excel";
-  $("#xpFromL").firstChild.textContent = kind === "timeline" ? "From" : "Due from";
-  $("#xpToL").firstChild.textContent = kind === "timeline" ? "To" : "Due to";
+  $("#xpFromL").firstChild.textContent = kind === "timeline" ? "From" : "Planned from";
+  $("#xpToL").firstChild.textContent = kind === "timeline" ? "To" : "Planned to";
   $("#xpPresets").innerHTML = presets.map(([l, [a, b]]) => `<button class="btn" data-xp="${a}|${b}">${l}</button>`).join("");
   const [a, b] = kind === "timeline" ? (state.tlMode === "month" ? tlRangeDays() : [ymd(d), ymd(d)]) : monthRange(t);
   $("#xpFrom").value = a; $("#xpTo").value = b;
   $("#xpAllWrap").style.display = kind === "jobs" ? "" : "none"; $("#xpAll").checked = kind === "jobs";
-  $("#xpNote").textContent = kind === "timeline" ? "Includes the schedule, a summary per person and a day-by-day grid — only people you can see, using your current filters." : "Uses your current job filters. Tick “All due dates” to include every job, or untick it to keep only jobs due between the two dates.";
+  $("#xpNote").textContent = kind === "timeline" ? "Includes the schedule, a summary per person and a day-by-day grid — only people you can see, using your current filters." : "Uses your current job filters. Tick “All planned completion dates” to include every job, or untick it to keep only jobs due between the two dates.";
   $("#xpErr").textContent = ""; syncXp(); $("#xpScrim").classList.add("on");
 }
 function syncXp(){ const all = xpKind === "jobs" && $("#xpAll").checked; $("#xpFrom").disabled = $("#xpTo").disabled = all;
@@ -2126,7 +2167,7 @@ function osData(){
   const jobs = what === "tasks" ? [] : state.jobs.filter(j => !jobClosed(j) && inBr(j) && (inSet(j.preparerId) || inSet(j.reviewerId)) && (!upTo || (j.dueDate && j.dueDate <= upTo)))
     .map(j => { const d = dueInfo(j); const days = j.dueDate ? d.days : null;
       return { ticket: j.ticket || "", branch: j.branch || "", client: j.client || "", type: j.type || "", ya: j.ya || "", due: j.dueDate || "", days,
-        status: !j.dueDate ? "No due date" : days < 0 ? `Overdue ${-days} day${days === -1 ? "" : "s"}` : days === 0 ? "Due today" : days <= 7 ? `Due in ${days} day${days === 1 ? "" : "s"}` : `${days} days left`,
+        status: !j.dueDate ? "No planned date" : days < 0 ? `Overdue ${-days} day${days === -1 ? "" : "s"}` : days === 0 ? "Due today" : days <= 7 ? `Due in ${days} day${days === 1 ? "" : "s"}` : `${days} days left`,
         level: !j.dueDate ? 0 : days <= 0 ? 3 : days <= 7 ? 2 : 1,
         stage: STAGES[j.stage] || STAGES.todo, prep: memberName(j.preparerId) || "—", rev: memberName(j.reviewerId) || "—", hours: round1(jobHours(j) / 60), notes: j.notes || "" }; })
     .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || a.client.localeCompare(b.client));
@@ -2151,11 +2192,11 @@ const osDmy = ds => ds ? ds.split("-").reverse().join("/") : "";
 function osPreviewHtml(d){
   const c = d.counts;
   const jobTable = g => `<table class="os"><colgroup><col style="width:12%"><col style="width:6%"><col style="width:15%"><col style="width:10%"><col style="width:5%"><col style="width:9%"><col style="width:10%"><col style="width:9%"><col style="width:9.5%"><col style="width:9.5%"><col style="width:5%"></colgroup>
-    <thead>${g.title ? `<tr><th colspan="11" class="l grp">${esc(g.title)} · ${g.rows.length}</th></tr>` : ""}<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Job type</th><th>YA</th><th>Due date</th><th>Status</th><th>Stage</th><th>Preparer</th><th>Reviewer</th><th>Hours</th></tr></thead>
+    <thead>${g.title ? `<tr><th colspan="11" class="l grp">${esc(g.title)} · ${g.rows.length}</th></tr>` : ""}<tr><th>Ticket no.</th><th>Branch</th><th>Client</th><th>Job type</th><th>YA</th><th>Planned completion date</th><th>Status</th><th>Stage</th><th>Preparer</th><th>Reviewer</th><th>Hours</th></tr></thead>
     <tbody>${g.rows.map(r => `<tr class="lv${r.level}"><td class="c mono">${esc(r.ticket)}</td><td class="c">${esc(r.branch)}</td><td>${esc(r.client)}${r.notes ? `<div class="sub">${esc(r.notes)}</div>` : ""}</td><td>${esc(r.type)}</td><td class="c">${esc(r.ya)}</td><td class="c">${osDmy(r.due)}</td><td class="st">${esc(r.status)}</td><td>${esc(r.stage)}</td><td>${esc(r.prep)}</td><td>${esc(r.rev)}</td><td class="c">${r.hours || ""}</td></tr>`).join("") || `<tr><td colspan="11" class="c muted">No outstanding jobs 🎉</td></tr>`}</tbody></table>`;
   return `<div class="tsp">
     <div class="tsp-t">Outstanding Listing</div>
-    <div class="tsp-meta"><b>Staff:</b> ${esc(d.who)} &nbsp;·&nbsp; <b>As at:</b> ${osDmy(d.today)}${d.upTo ? ` &nbsp;·&nbsp; <b>Jobs due up to:</b> ${osDmy(d.upTo)}` : ""}</div>
+    <div class="tsp-meta"><b>Staff:</b> ${esc(d.who)} &nbsp;·&nbsp; <b>As at:</b> ${osDmy(d.today)}${d.upTo ? ` &nbsp;·&nbsp; <b>Planned completion up to:</b> ${osDmy(d.upTo)}` : ""}</div>
     <div class="os-kpis"><span><b>${c.open}</b> outstanding jobs</span><span class="bad"><b>${c.overdue}</b> overdue</span><span class="warn"><b>${c.week}</b> due within 7 days</span><span><b>${c.review}</b> in review</span><span><b>${c.tasks}</b> tasks not done</span></div>
     ${d.what !== "tasks" ? `<h4>A. Outstanding client jobs</h4>${d.groups.map(jobTable).join("")}` : ""}
     ${d.what !== "jobs" ? `<h4>${d.what === "tasks" ? "" : "B. "}Tasks not marked done (up to today)</h4><table class="os"><thead><tr><th>Date</th><th>Days</th><th>Staff</th><th>Task</th><th>Client</th><th>Ticket no.</th><th>Status</th></tr></thead><tbody>
@@ -2173,7 +2214,7 @@ async function osXlsx(d){
   const fills = { 3: "FFFDE2E4", 2: "FFFFF4DC" };
   let r = 1;
   ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: "Outstanding Listing", font: { name: "Arial", size: 14, bold: true, underline: true } }); r++;
-  ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Jobs due up to: ${osDmy(d.upTo)}` : ""}`, font: { name: "Arial", size: 10, bold: true } }); r++;
+  ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Planned completion up to: ${osDmy(d.upTo)}` : ""}`, font: { name: "Arial", size: 10, bold: true } }); r++;
   ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${d.counts.open} outstanding jobs · ${d.counts.overdue} overdue · ${d.counts.week} due within 7 days · ${d.counts.review} in review · ${d.counts.tasks} tasks not done`, font: { name: "Arial", size: 10, color: { argb: "FF4B5563" } } }); r += 2;
   const headerRow = cols => { cols.forEach((t, k) => { const c = ws.getCell(r, k + 1); c.value = t; c.font = { name: "Arial", size: 10, bold: true }; c.fill = head; c.border = box; c.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; }); ws.getRow(r).height = 18; r++; };
   const serial = ds => { const [y, m, dd] = ds.split("-").map(Number); return (Date.UTC(y, m - 1, dd) - Date.UTC(1899, 11, 30)) / 864e5; };
@@ -2181,7 +2222,7 @@ async function osXlsx(d){
     ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: "A. Outstanding client jobs", font: { name: "Arial", size: 11, bold: true } }); r++;
     for (const g of d.groups) {
       if (g.title) { ws.mergeCells(`A${r}:L${r}`); Object.assign(ws.getCell(`A${r}`), { value: `${g.title} · ${g.rows.length}`, font: { name: "Arial", size: 10, bold: true, color: { argb: "FF0F766E" } } }); r++; }
-      headerRow(["Ticket no.", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours", "Branch", "Notes"]);
+      headerRow(["Ticket no.", "Client", "Job type", "YA", "Planned completion date", "Status", "Stage", "Preparer", "Reviewer", "Hours", "Branch", "Notes"]);
       if (!g.rows.length) { ws.mergeCells(`A${r}:L${r}`); ws.getCell(`A${r}`).value = "No outstanding jobs"; r++; }
       for (const x of g.rows) {
         const vals = [x.ticket, x.client, x.type, x.ya, x.due ? serial(x.due) : "", x.status, x.stage, x.prep, x.rev, x.hours || "", x.branch, x.notes];
@@ -2209,7 +2250,7 @@ function osPdf(J, d){
   const doc = new J({ unit: "pt", format: "a4", orientation: "landscape" });
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 28, ink = [31, 41, 55], head = [218, 237, 243];
   doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...ink); doc.text("Outstanding Listing", M, 36);
-  doc.setFontSize(9.5); doc.text(`Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Jobs due up to: ${osDmy(d.upTo)}` : ""}`, M, 52);
+  doc.setFontSize(9.5); doc.text(`Staff: ${d.who}    As at: ${osDmy(d.today)}${d.upTo ? `    Planned completion up to: ${osDmy(d.upTo)}` : ""}`, M, 52);
   doc.setFont("helvetica", "normal"); doc.setTextColor(75, 85, 99);
   doc.text(`${d.counts.open} outstanding jobs · ${d.counts.overdue} overdue · ${d.counts.week} due within 7 days · ${d.counts.review} in review · ${d.counts.tasks} tasks not done`, M, 66);
   const base = { theme: "grid", margin: { left: M, right: M }, styles: { font: "helvetica", fontSize: 8, cellPadding: 3, lineColor: [154, 165, 177], lineWidth: .4, textColor: ink, valign: "top" },
@@ -2220,7 +2261,7 @@ function osPdf(J, d){
     title("A. Outstanding client jobs");
     for (const g of d.groups) {
       if (g.title) title(`${g.title} · ${g.rows.length}`, 9.5, [15, 118, 110]);
-      doc.autoTable({ ...base, startY: y, head: [["Ticket no.", "Branch", "Client", "Job type", "YA", "Due date", "Status", "Stage", "Preparer", "Reviewer", "Hours"]],
+      doc.autoTable({ ...base, startY: y, head: [["Ticket no.", "Branch", "Client", "Job type", "YA", "Planned completion date", "Status", "Stage", "Preparer", "Reviewer", "Hours"]],
         body: g.rows.length ? g.rows.map(x => [x.ticket, x.branch, x.client + (x.notes ? "\n" + x.notes : ""), x.type, x.ya, osDmy(x.due), x.status, x.stage, x.prep, x.rev, x.hours || ""]) : [[{ content: "No outstanding jobs", colSpan: 11, styles: { halign: "center", textColor: [107, 114, 128] } }]],
         columnStyles: { 0: { cellWidth: 72, halign: "center" }, 1: { cellWidth: 38, halign: "center" }, 2: { cellWidth: 140 }, 4: { cellWidth: 30, halign: "center" }, 5: { cellWidth: 56, halign: "center" }, 10: { cellWidth: 34, halign: "center" } },
         didParseCell: h => { if (h.section !== "body" || !g.rows[h.row.index]) return; const lv = g.rows[h.row.index].level;
@@ -2251,6 +2292,155 @@ async function downloadOutstanding(kind){
     toast(kind === "pdf" ? "Outstanding list PDF downloaded" : "Outstanding list Excel downloaded");
   } catch (e) { if (e?.code === "declined") return; $("#osErr").textContent = e.message || "Couldn't create the file."; }
   finally { btn.disabled = false; }
+}
+
+
+// ---------- Summary page: job status matrix + time by job by level ----------
+state.sumMode = state.sumMode || "status";
+const LEVELS = [["associate","Associate"],["senior","Senior"],["am","Assistant Manager"],["manager","Manager"],["sm","Senior Manager"],["hod","Head of Division"],["director","Administrator"]];
+const SUM_STAGES = [["todo","Not started"],["prep","WIP"],["review","In review"],["draft","Draft sent"],["invoicing","Invoicing"],["done","Submitted / filed"],["changes","Changes requested"],["cancelled","Cancelled"]];
+const levelOf = id => { const m = memberById(id) || (state.directory || []).find(d => d.id === id); return m ? (m.private ? "director" : normAccess(m.access)) : "associate"; };
+function jobTime(j){
+  const per = {}, lv = {}; let total = 0;
+  state.allItems.filter(i => i.jobId === j.id && i.status !== "cancelled" && i.category !== "leave").forEach(i => { const m = dur(i); total += m; per[i.memberId] = (per[i.memberId] || 0) + m; const l = levelOf(i.memberId); lv[l] = (lv[l] || 0) + m; });
+  return { per, lv, total };
+}
+function jobTimeHtml(j){
+  const t = jobTime(j); if (!t.total) return `<b>⏱ Time allocated</b><div class="muted">No time scheduled on this job yet.</div>`;
+  return `<b>⏱ Time allocated: ${hrs(t.total)}</b>
+    <div class="jt-row">${LEVELS.filter(([k]) => t.lv[k]).map(([k, l]) => `<span class="jt-chip"><b>${hrs(t.lv[k])}</b> ${l}</span>`).join("")}</div>
+    <div class="muted" style="font-size:12px">${Object.entries(t.per).sort((a, b) => b[1] - a[1]).map(([id, m]) => `${esc(memberName(id))} ${hrs(m)}`).join(" · ")}</div>`;
+}
+function sumJobs(){
+  const ty = $("#sumType").value, br = $("#sumBranch").value, ya = $("#sumYA").value, closed = $("#sumClosed").checked, q = $("#sumQ").value.trim().toLowerCase();
+  return state.jobs.filter(j => (!ty || j.type === ty) && (!br || j.branch === br) && (!ya || j.ya === ya) && (closed || !jobClosed(j))
+    && (!q || [j.ticket, j.client, j.type, j.branch, memberName(j.preparerId), memberName(j.reviewerId)].join(" ").toLowerCase().includes(q)))
+    .sort((a, b) => String(a.branch || "~").localeCompare(String(b.branch || "~")) || String(a.client).localeCompare(String(b.client)));
+}
+function fillSumFilters(){
+  const keep = id => $("#" + id).value;
+  const types = [...new Set(state.jobs.map(j => j.type).filter(Boolean))].sort(), yas = [...new Set(state.jobs.map(j => j.ya).filter(Boolean))].sort().reverse();
+  const brs = BRANCHES.filter(([c]) => state.jobs.some(j => j.branch === c));
+  const a = keep("sumType"), b = keep("sumBranch"), c = keep("sumYA");
+  $("#sumType").innerHTML = `<option value="">All categories</option>` + types.map(t => `<option ${t === a ? "selected" : ""}>${esc(t)}</option>`).join("");
+  $("#sumBranch").innerHTML = `<option value="">All branches</option>` + brs.map(([k, n]) => `<option value="${k}" ${k === b ? "selected" : ""}>${k} · ${esc(n)}</option>`).join("");
+  $("#sumYA").innerHTML = `<option value="">All YA</option>` + yas.map(y => `<option ${y === c ? "selected" : ""}>${esc(y)}</option>`).join("");
+}
+function renderSummary(){
+  fillSumFilters();
+  document.querySelectorAll("#sumMode button").forEach(b => b.classList.toggle("on", b.dataset.summode === state.sumMode));
+  const list = sumJobs(); const ye = d => d ? osDmy(d) : "";
+  if (state.sumMode === "status") {
+    const tot = Object.fromEntries(SUM_STAGES.map(([k]) => [k, 0]));
+    const rows = list.map(j => { const st = j.stage || "todo"; tot[st] = (tot[st] || 0) + 1;
+      return `<tr data-job="${esc(j.id)}" class="${st === "cancelled" ? "jcancel" : ""}"><td>${branchTag(j.branch) || "—"}</td><td><b>${esc(j.client)}</b><div class="muted" style="font-size:11px"><span class="ticket" style="font-size:10.5px;padding:1px 6px">${esc(j.ticket || "")}</span> ${esc(j.type || "")}${j.ya ? " · YA" + esc(j.ya) : ""}</div></td>
+        <td class="c">${ye(j.refDate)}</td><td>${esc(memberName(j.preparerId) || "—")}</td><td>${esc(memberName(j.reviewerId) || "—")}</td>
+        ${SUM_STAGES.map(([k]) => `<td class="c stc">${st === k ? `<span class="stdot stg-${k}" title="${esc(STAGES[k])}">●</span>` : ""}</td>`).join("")}
+        <td class="c">${j.dueDate ? `<span class="${dueInfo(j).cls}">${osDmy(j.dueDate)}</span>` : "—"}</td></tr>`; }).join("");
+    $("#sumTable").innerHTML = `<tr><th>Branch</th><th>Client name</th><th>YE</th><th>PIC in charge</th><th>Manager in charge</th>${SUM_STAGES.map(([, l]) => `<th class="c">${l}</th>`).join("")}<th>Planned completion</th></tr>`
+      + (rows || `<tr><td colspan="${6 + SUM_STAGES.length}" class="empty">No jobs match</td></tr>`)
+      + (list.length ? `<tr class="sumtot"><td colspan="5">Total · ${list.length} job${list.length === 1 ? "" : "s"}</td>${SUM_STAGES.map(([k]) => `<td class="c">${tot[k] || ""}</td>`).join("")}<td></td></tr>` : "");
+    $("#sumNote").textContent = "One row per job; the dot shows its current stage. Click a row to open the job. PIC = preparer, Manager in charge = reviewer.";
+  } else {
+    const tot = {}; let all = 0;
+    const rows = list.map(j => { const t = jobTime(j); all += t.total; LEVELS.forEach(([k]) => tot[k] = (tot[k] || 0) + (t.lv[k] || 0));
+      return `<tr data-job="${esc(j.id)}"><td>${branchTag(j.branch) || "—"}</td><td><b>${esc(j.client)}</b><div class="muted" style="font-size:11px">${esc(j.ticket || "")} · ${esc(j.type || "")}</div></td><td>${esc(memberName(j.preparerId) || "—")}</td>
+        ${LEVELS.map(([k]) => `<td class="c">${t.lv[k] ? hrs(t.lv[k]) : ""}</td>`).join("")}<td class="c"><b>${t.total ? hrs(t.total) : "—"}</b></td>
+        <td class="muted" style="font-size:12px">${Object.entries(t.per).sort((a, b) => b[1] - a[1]).map(([id, m]) => `${esc(memberName(id))} ${hrs(m)}`).join(", ")}</td></tr>`; }).join("");
+    $("#sumTable").innerHTML = `<tr><th>Branch</th><th>Client name</th><th>PIC in charge</th>${LEVELS.map(([, l]) => `<th class="c">${l}</th>`).join("")}<th class="c">Total</th><th>By person</th></tr>`
+      + (rows || `<tr><td colspan="${5 + LEVELS.length}" class="empty">No jobs match</td></tr>`)
+      + (list.length ? `<tr class="sumtot"><td colspan="3">Total</td>${LEVELS.map(([k]) => `<td class="c">${tot[k] ? hrs(tot[k]) : ""}</td>`).join("")}<td class="c">${hrs(all)}</td><td></td></tr>` : "");
+    $("#sumNote").textContent = "Hours scheduled on each job (tasks linked to the job, excluding cancelled), split by the role of the person doing them. Several people can book time on the same job, even at the same time — e.g. the junior preparing while the reviewer reviews. Only time you are allowed to see is counted.";
+  }
+}
+async function summaryXlsx(){
+  const list = sumJobs(); const dmy = d => d ? xlDate(d) : "";
+  if (state.sumMode === "status") {
+    const rows = [["Branch","Client name","Ticket no.","Category","YA","YE","PIC in charge","Manager in charge", ...SUM_STAGES.map(([, l]) => l), "Planned completion date"]];
+    list.forEach(j => rows.push([j.branch || "", j.client, j.ticket || "", j.type || "", j.ya || "", dmy(j.refDate), memberName(j.preparerId) || "", memberName(j.reviewerId) || "", ...SUM_STAGES.map(([k]) => (j.stage || "todo") === k ? "✓" : ""), dmy(j.dueDate)]));
+    rows.push(["Total", list.length + " jobs", "", "", "", "", "", "", ...SUM_STAGES.map(([k]) => list.filter(j => (j.stage || "todo") === k).length || ""), ""]);
+    await saveWorkbook(`Job summary ${ymd(new Date())}.xlsx`, [{ name: "Job status", rows, cols: [9,30,15,18,6,12,20,20,...SUM_STAGES.map(() => 11),14], dateCols: [5, 8 + SUM_STAGES.length] }]);
+  } else {
+    const rows = [["Branch","Client name","Ticket no.","Category","PIC in charge", ...LEVELS.map(([, l]) => l + " (h)"), "Total (h)", "By person"]];
+    list.forEach(j => { const t = jobTime(j); rows.push([j.branch || "", j.client, j.ticket || "", j.type || "", memberName(j.preparerId) || "", ...LEVELS.map(([k]) => t.lv[k] ? round1(t.lv[k] / 60) : ""), t.total ? round1(t.total / 60) : 0,
+      Object.entries(t.per).map(([id, m]) => `${memberName(id)} ${round1(m / 60)}h`).join(", ")]); });
+    await saveWorkbook(`Time by job ${ymd(new Date())}.xlsx`, [{ name: "Time by job", rows, cols: [9,30,15,18,20,...LEVELS.map(() => 12),10,50], numCols: [...LEVELS.map((_, k) => 5 + k), 5 + LEVELS.length] }]);
+  }
+}
+
+// ---------- Bulk upload of jobs from Excel ----------
+const UP_HEAD = ["Branch code","Client name","Job type","YA","Year end (dd/mm/yyyy)","Planned completion date (dd/mm/yyyy)","PIC in charge (name or email)","Manager in charge (name or email)","Stage","Notes"];
+let upRows = [];
+async function downloadUploadTemplate(){
+  const people = [...new Map([...state.allMembers.filter(m => !m.private), ...(state.directory || [])].map(m => [m.id, m])).values()].sort((a, b) => String(a.name).localeCompare(b.name));
+  const help = [["How to fill"], ["• One row per job on the Jobs sheet. Keep the heading row as it is."], ["• Required: Branch code, Client name, Job type, Planned completion date."], ["• Dates as dd/mm/yyyy (e.g. 31/12/2026) or an Excel date."],
+    ["• PIC in charge = preparer, Manager in charge = reviewer. Type the person's name exactly as on the Lists sheet (or their email)."], ["• Stage is optional (default Not started). Ticket numbers are given automatically."], ["• Delete the e.g. example row before uploading (rows starting with e.g. are skipped anyway)."]];
+  const max = Math.max(BRANCHES.length, FILINGS.length, people.length, SUM_STAGES.length);
+  const lists = [["Branch code","Branch name","Job type","Stage","Staff name","Branch","Role"]];
+  for (let i = 0; i < max; i++) { const b = BRANCHES[i], p = people[i], st = SUM_STAGES[i];
+    lists.push([b ? b[0] : "", b ? b[1] : "", FILINGS[i] || "", st ? STAGES[st[0]] : "", p ? p.name : "", p ? (p.branch || "") : "", p ? roleLabel(normAccess(p.access)) : ""]); }
+  await saveWorkbook("CCTeamSync job upload template.xlsx", [
+    { name: "Jobs", rows: [UP_HEAD, ["e.g.", "e.g. ABC Sdn Bhd", "Form C", "2026", "31/12/2025", "31/07/2026", people[0]?.name || "", people[1]?.name || "", "Not started", ""]], cols: [12,32,20,6,18,22,26,26,16,30], filter: false },
+    { name: "Lists", rows: lists, cols: [12,18,24,18,24,9,18] }, { name: "How to fill", rows: help, cols: [110], filter: false }]);
+}
+function upParseDate(v){
+  if (v == null || v === "") return "";
+  if (v instanceof Date && !isNaN(v)) return ymd(new Date(v.getFullYear(), v.getMonth(), v.getDate()));
+  if (typeof v === "number") { const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 864e5); return d.toISOString().slice(0, 10); }
+  const t = String(v).trim(); let m;
+  if ((m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/))) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; const ds = `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+    const d = new Date(+y, +m[2] - 1, +m[1]); return d.getMonth() === +m[2] - 1 && d.getDate() === +m[1] ? ds : "?"; }
+  if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})/))) return `${m[1]}-${m[2]}-${m[3]}`;
+  return "?";
+}
+function upFindPerson(v){
+  const t = String(v || "").trim().toLowerCase(); if (!t) return { id: null };
+  const pool = [...new Map([...state.allMembers.filter(m => !m.private), ...(state.directory || [])].map(m => [m.id, m])).values()];
+  const hit = pool.find(m => String(m.name || "").toLowerCase() === t) || state.allMembers.find(m => !m.private && normId(m.userId) === t)
+    || pool.filter(m => String(m.name || "").toLowerCase().includes(t)).reduce((a, m, _, arr) => arr.length === 1 ? m : a, null);
+  return hit ? { id: hit.id } : { error: `“${v}” not found` };
+}
+async function readUploadFile(file){
+  $("#upErr").textContent = ""; $("#upGo").disabled = true; upRows = [];
+  let X; try { X = await loadXLSX(); } catch(_) { return $("#upErr").textContent = "Couldn't load the Excel tools — check your connection and try again."; }
+  try {
+    const wb = X.read(await file.arrayBuffer(), { type: "array" });
+    const ws = wb.Sheets["Jobs"] || wb.Sheets[wb.SheetNames[0]];
+    const aoa = X.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+    const hi = aoa.findIndex(r => r.some(c => /client name/i.test(String(c))));
+    if (hi < 0) return $("#upErr").textContent = "Couldn't find the heading row — please use the downloaded template.";
+    const H = aoa[hi].map(c => String(c).toLowerCase()); const col = re => H.findIndex(h => re.test(h));
+    const C = { br: col(/branch/), cl: col(/client/), ty: col(/job type|category|filing/), ya: col(/^ya|year of assessment/), ye: col(/year end|ye\b/), due: col(/planned|completion|due/), pic: col(/pic|preparer/), mgr: col(/manager|reviewer/), st: col(/stage|status/), no: col(/note/) };
+    const stageByText = t => { const x = String(t || "").trim().toLowerCase(); if (!x) return "todo"; if (x === "wip") return "prep"; const e = Object.entries(STAGES).find(([k, l]) => k === x || l.toLowerCase() === x || l.toLowerCase().startsWith(x)); return e ? e[0] : null; };
+    for (let r = hi + 1; r < aoa.length; r++) {
+      const row = aoa[r]; const get = k => C[k] >= 0 ? row[C[k]] : "";
+      const client = String(get("cl")).trim(); if (!client && !String(get("br")).trim()) continue; if (/^e\.?g\.?/i.test(client) || /^e\.?g\.?/i.test(String(get("br")))) continue;
+      const errs = []; const br = String(get("br")).trim().toUpperCase(); const ty = String(get("ty")).trim();
+      if (!BRANCH_NAME[br]) errs.push(br ? `branch “${br}” unknown` : "branch missing");
+      if (!client) errs.push("client missing");
+      const typ = FILINGS.find(f => f.toLowerCase() === ty.toLowerCase()) || ty; if (!ty) errs.push("job type missing");
+      const due = upParseDate(get("due")); if (!due) errs.push("planned completion date missing"); else if (due === "?") errs.push("planned completion date not understood");
+      const ye = upParseDate(get("ye")); if (ye === "?") errs.push("year end not understood");
+      const pic = upFindPerson(get("pic")), mgr = upFindPerson(get("mgr")); if (pic.error) errs.push("PIC " + pic.error); if (mgr.error) errs.push("Manager " + mgr.error);
+      const st = stageByText(get("st")); if (!st) errs.push(`stage “${get("st")}” unknown`);
+      const ya = String(get("ya") || "").trim().replace(/\.0$/, "");
+      upRows.push({ line: r + 1, errs, data: { client, type: typ, ya, refDate: ye && ye !== "?" ? ye : "", dueDate: due !== "?" ? due : "", preparerId: pic.id || null, reviewerId: mgr.id || null, stage: st || "todo", notes: String(get("no") || "").trim(), branch: BRANCH_NAME[br] ? br : null } });
+    }
+    renderUploadPreview();
+  } catch (e) { $("#upErr").textContent = "Couldn't read that file: " + (e.message || e); }
+}
+function renderUploadPreview(){
+  const ok = upRows.filter(r => !r.errs.length).length, bad = upRows.length - ok;
+  $("#upNote").innerHTML = upRows.length ? `<b>${upRows.length}</b> row${upRows.length === 1 ? "" : "s"} found · <span style="color:var(--ok)"><b>${ok}</b> ready</span>${bad ? ` · <span style="color:var(--bad)"><b>${bad}</b> with problems (fix in Excel and upload again, or they'll be skipped)</span>` : ""}` : "No job rows found in the file.";
+  $("#upPreview").innerHTML = upRows.length ? `<table class="admt"><tr><th>Row</th><th>Branch</th><th>Client</th><th>Job type</th><th>YA</th><th>YE</th><th>Planned completion</th><th>PIC</th><th>Manager</th><th>Stage</th><th>Check</th></tr>${upRows.map(r => `<tr class="${r.errs.length ? "uperr" : ""}"><td>${r.line}</td><td>${esc(r.data.branch || "")}</td><td>${esc(r.data.client)}</td><td>${esc(r.data.type)}</td><td>${esc(r.data.ya)}</td><td>${osDmy(r.data.refDate)}</td><td>${osDmy(r.data.dueDate)}</td><td>${esc(memberName(r.data.preparerId) || "")}</td><td>${esc(memberName(r.data.reviewerId) || "")}</td><td>${esc(STAGES[r.data.stage] || "")}</td><td>${r.errs.length ? "⚠ " + esc(r.errs.join("; ")) : "✓"}</td></tr>`).join("")}</table>` : "";
+  $("#upGo").disabled = !ok; $("#upGo").textContent = ok ? `Create ${ok} job${ok === 1 ? "" : "s"}` : "Create jobs";
+}
+async function createUploadedJobs(){
+  const good = upRows.filter(r => !r.errs.length); if (!good.length) return;
+  const btn = $("#upGo"); btn.disabled = true; let done = 0, failed = 0; const me = meMember()?.id || null;
+  for (const r of good) { btn.textContent = `Creating ${done + failed + 1} of ${good.length}…`;
+    try { await commit("jobs", uid(), { ...r.data, createdBy: me, updatedAt: Date.now() }); done++; } catch(_) { failed++; } }
+  $("#upScrim").classList.remove("on"); toast(`${done} job${done === 1 ? "" : "s"} created${failed ? ` · ${failed} failed` : ""} 🎉`); if (done && !failed) confetti(40);
 }
 
 function openTimesheet(){
@@ -2350,7 +2540,7 @@ async function exportJobs(due){
   const list = filteredJobs().filter(j => !due || (j.dueDate && j.dueDate >= due[0] && j.dueDate <= due[1]));
   if (!list.length) { toast(due ? "No jobs are due between those dates" : "No jobs match the current filter"); return; }
   const today = ymd(new Date());
-  const head = ["Ticket no.","Branch","Client","Filing","YA","Year end / basis start","Due date","Days left","Due status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Submitted / filed on","Notes"];
+  const head = ["Ticket no.","Branch","Client","Filing","YA","Year end / basis start","Planned completion date","Days left","Status","Stage","Preparer","Reviewer","Hours scheduled","Tasks","Submitted / filed on","Notes"];
   const rows = [head];
   list.forEach(j => { const d = dueInfo(j); const tasks = state.items.filter(i => i.jobId === j.id);
     const st = j.stage === "cancelled" ? "Cancelled" : j.stage === "done" ? "Submitted / filed" : !j.dueDate ? "" : d.days < 0 ? "Overdue" : d.days === 0 ? "Due today" : d.days <= 7 ? "Due within 7 days" : "On track";
@@ -2360,7 +2550,7 @@ async function exportJobs(due){
     .forEach(i => work.push([j.ticket || "", j.client, j.type, xlDate(i.date), dayName(i.date), i.start, i.end, round1(dur(i)/60), memberName(i.memberId), i.title, STATUS[i.status] || i.status])));
   // summary by stage and by person
   const sum = [["Stage","Jobs"]]; Object.entries(STAGES).forEach(([k, v]) => sum.push([v, list.filter(j => (j.stage || "todo") === k).length]));
-  sum.push([], ["Due status","Jobs"], ["Overdue", list.filter(j => !jobClosed(j) && j.dueDate && j.dueDate < today).length], ["Due within 7 days", list.filter(j => !jobClosed(j) && j.dueDate >= today && dueInfo(j).days <= 7).length]);
+  sum.push([], ["Status","Jobs"], ["Overdue", list.filter(j => !jobClosed(j) && j.dueDate && j.dueDate < today).length], ["Due within 7 days", list.filter(j => !jobClosed(j) && j.dueDate >= today && dueInfo(j).days <= 7).length]);
   sum.push([], ["Person","Preparing (open)","Reviewing (open)","Submitted / filed"]);
   const ppl = [...new Set(list.flatMap(j => [j.preparerId, j.reviewerId]).filter(Boolean))];
   ppl.forEach(id => sum.push([memberName(id), list.filter(j => j.preparerId === id && !jobClosed(j)).length, list.filter(j => j.reviewerId === id && !jobClosed(j)).length, list.filter(j => j.preparerId === id && j.stage === "done").length]));
@@ -2369,7 +2559,7 @@ async function exportJobs(due){
     { name: "Client jobs", rows, cols: [14,18,28,18,6,14,12,9,16,16,18,18,10,7,12,40], dateCols: [5,6,14], numCols: [12] },
     { name: "Scheduled work", rows: work, cols: [14,28,18,12,6,7,7,7,18,36,12], dateCols: [3], numCols: [7] },
     { name: "Summary", rows: sum, cols: [22,16,16,10], filter: false },
-    { name: "About", rows: [["CCTeamSync — client jobs export"], ["Filter", f || "All"], ["Due dates", due ? `${niceDate(due[0])} – ${niceDate(due[1])}` : "All"], ["Jobs", list.length], ["Exported", new Date().toLocaleString("en-GB")], ["Exported by", meMember()?.name || (state.isOwner ? "Administrator" : "")], ["Note", "Due dates suggested by the app follow LHDN rules; verify against the latest filing programme."]], cols: [14, 60], filter: false },
+    { name: "About", rows: [["CCTeamSync — client jobs export"], ["Filter", f || "All"], ["Planned completion dates", due ? `${niceDate(due[0])} – ${niceDate(due[1])}` : "All"], ["Jobs", list.length], ["Exported", new Date().toLocaleString("en-GB")], ["Exported by", meMember()?.name || (state.isOwner ? "Administrator" : "")], ["Note", "Statutory dates suggested by the app follow LHDN rules; verify against the latest filing programme."]], cols: [14, 60], filter: false },
   ]);
 }
 
@@ -2929,7 +3119,7 @@ $("#jobForm").addEventListener("submit", async e => {
   if (!data.client) return $("#jobErr").textContent = "Enter the client's name.";
   if (!data.branch) return $("#jobErr").textContent = "Choose the branch for this job.";
 
-  if (!data.dueDate) return $("#jobErr").textContent = "Set a due date (use the suggested statutory date if it applies).";
+  if (!data.dueDate) return $("#jobErr").textContent = "Set the planned completion date (use the suggested statutory date if it applies).";
   data.createdBy = editingJob?.createdBy || (editingJob ? null : meMember()?.id) || null; if (!data.createdBy) delete data.createdBy;
   if (editingJob?.demo) data.demo = true;
   if (data.stage === "done") data.doneAt = editingJob?.doneAt || ymd(new Date());
@@ -2990,6 +3180,8 @@ const step = dir => { const d = new Date(state.date);
   state.date = d; render(); };
 ["xpFrom","xpTo","xpAll"].forEach(id => $("#" + id).addEventListener("change", () => { if (id !== "xpAll") $("#xpAll").checked = false; syncXp(); }));
 ["tsWho","tsWeek"].forEach(id => $("#" + id).addEventListener("change", syncTs));
+["sumType","sumBranch","sumYA","sumClosed"].forEach(id => $("#" + id).addEventListener("change", renderSummary)); $("#sumQ").addEventListener("input", renderSummary);
+$("#upFile").addEventListener("change", e => { const f = e.target.files[0]; if (f) readUploadFile(f); });
 ["osWho","osBranch","osWhat","osUpTo","osGroup","osTeam"].forEach(id => $("#" + id).addEventListener("change", syncOs));
 $("#tlFrom").addEventListener("change", setTlRange); $("#tlTo").addEventListener("change", setTlRange);
 $("#tlRangeClear").addEventListener("click", () => { state.tlRange = null; render(); });
@@ -3026,6 +3218,12 @@ document.addEventListener("click", e => {
   if (t.closest("#xpGo")) { runExport(); return; }
   if (t.closest("[data-ts-open]")) { openTimesheet(); return; }
   if (t.closest("[data-os-open]")) { openOutstanding(); return; }
+  const sm = t.closest("[data-summode]"); if (sm) { state.sumMode = sm.dataset.summode; renderSummary(); return; }
+  if (t.closest("#sumXlsx")) { summaryXlsx(); return; }
+  if (t.closest("#upJobsBtn")) { upRows = []; $("#upFile").value = ""; $("#upPreview").innerHTML = ""; $("#upNote").textContent = ""; $("#upErr").textContent = ""; $("#upGo").disabled = true; $("#upGo").textContent = "Create jobs"; $("#upScrim").classList.add("on"); return; }
+  if (t.closest("#upTpl")) { downloadUploadTemplate(); return; }
+  if (t.closest("#upGo")) { createUploadedJobs(); return; }
+  const sr = t.closest("#sumTable tr[data-job]"); if (sr) { openJob(jobById(sr.dataset.job)); return; }
   if (t.closest("#osXlsx")) { downloadOutstanding("xlsx"); return; }
   if (t.closest("#osPdf")) { downloadOutstanding("pdf"); return; }
   const tw = t.closest("[data-tsweek]"); if (tw) { $("#tsWeek").value = ymd(addDays(new Date(), 7 * +tw.dataset.tsweek)); syncTs(); return; }
