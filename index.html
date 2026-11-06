@@ -744,7 +744,6 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
         <label class="fl">Year of assessment<input name="ya" maxlength="4" inputmode="numeric" placeholder="2026"></label>
       </div>
       <label class="fl">Branch<select name="branch"></select></label>
-      <div id="jobTime" class="jobtime" style="display:none"></div>
       <div class="row2">
         <label class="fl" id="refWrap"><span id="refLbl">Financial year end</span><input type="date" name="refDate"></label>
         <label class="fl">Planned completion date<input type="date" name="dueDate"></label>
@@ -1727,7 +1726,6 @@ function openJob(j, preset = {}){
   if (v.reviewerId && !f.reviewerId.querySelector(`option[value="${CSS.escape(v.reviewerId)}"]`)) f.reviewerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.reviewerId)}" selected>${esc(memberName(v.reviewerId))}</option>`);
   if (v.preparerId && !f.preparerId.querySelector(`option[value="${CSS.escape(v.preparerId)}"]`)) f.preparerId.insertAdjacentHTML("beforeend", `<option value="${esc(v.preparerId)}" selected>${esc(memberName(v.preparerId))}</option>`);
   f.stage.value = v.stage || "todo"; f.notes.value = v.notes || "";
-  $("#jobTime").style.display = j ? "" : "none"; if (j) $("#jobTime").innerHTML = jobTimeHtml(j);
   f.branch.innerHTML = branchOptions(v.branch || (!j ? (memberById(v.preparerId)?.branch || meMember()?.branch || "") : ""));
   const fillReviewers = keep => { const prepM = memberById(f.preparerId.value); const revIds = (prepM?.reviewers || []).filter(Boolean);
     const cur = keep ?? f.reviewerId.value; const base = assignOptions(cur, sortedMembers());
