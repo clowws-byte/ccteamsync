@@ -359,8 +359,10 @@ select.brsel{max-width:150px}
 .blk.cancelled,.chip.cancelled{opacity:.45;text-decoration:line-through;filter:grayscale(.8)}
 .stg-cancelled{background:#f1f1f4;color:#6b7280;text-decoration:line-through}
 .st-cancelled{background:#f1f1f4;color:#6b7280}
-.modal{resize:both;min-width:min(340px,96vw);min-height:180px;width:min(480px,96vw);max-width:96vw!important;position:relative}
-.modal.max{width:96vw!important;max-width:96vw!important;height:auto;max-height:92vh;resize:none}
+.modal{resize:both;box-sizing:border-box;min-width:min(340px,100%);min-height:180px;width:min(480px,100%);max-width:100%!important;position:relative}
+.modal.max{width:100%!important;max-width:100%!important;height:auto;max-height:calc(100vh - 32px);resize:none}
+.modal.max .bd input,.modal.max .bd select,.modal.max .bd textarea{min-width:0;max-width:100%;box-sizing:border-box}
+.modal .bd > *{min-width:0}
 .scrim.on .modal{animation-fill-mode:none}
 .modal .hd .mxbtn{margin-left:auto;margin-right:6px}
 .modal .tsp-wrap{max-height:none}.modal.max .tsp-wrap{max-height:calc(92vh - 260px)}
@@ -1315,7 +1317,7 @@ document.querySelectorAll(".modal > .hd").forEach(hd => { const b = document.cre
   b.onclick = () => { const m = hd.parentElement; m.classList.toggle("max"); b.textContent = m.classList.contains("max") ? "⤡" : "⤢"; };
   const x = hd.querySelector("[data-close]"); hd.insertBefore(b, x || null); });
 // ---------- new version available? ----------
-const BUILD = "20261109184645";
+const BUILD = "20261109184934";
 async function checkForUpdate(){
   try { const r = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }); if (!r.ok) return; const t = await r.text();
     const m = t.match(/const BUILD = "(\d+)"/); if (m && m[1] !== BUILD && !document.querySelector(".updbar")) {
