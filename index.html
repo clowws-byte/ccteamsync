@@ -812,20 +812,20 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
 <div id="loginScreen" class="login">
   <div class="login-card">
     <div class="login-brand"><span class="logo"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#147d88"/><g fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><rect x="17" y="19" width="30" height="27" rx="4.5"/><path d="M17 27.5h30M25 15v7M39 15v7"/><path d="M26 36.5l4.2 4.2 7.8-8"/></g></svg></span><div><div class="bn">CCT TeamSync</div><div class="bt">Team Planning &amp; Scheduling</div></div></div>
-    <form id="auth-login" autocomplete="on">
+    <form id="auth-login" autocomplete="off">
       <h2>Sign in</h2>
-      <label class="fl">Email<input name="userId" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="name@company.com" required></label>
+      <label class="fl">Email<input name="userId" type="text" inputmode="email" autocomplete="off" data-lpignore="true" data-form-type="other" autocapitalize="none" spellcheck="false" placeholder="name@company.com" required></label>
       <label class="fl">Password<div class="pwbox"><input name="pw" type="password" autocomplete="current-password" required><button type="button" class="linkbtn" data-showpw>Show</button></div></label>
       <label class="keep"><input type="checkbox" name="keep"> Keep me signed in on this device for 30 days</label>
       <button class="btn primary wide" type="submit">Sign in</button>
       <div class="login-links"><button type="button" class="linkbtn" data-auth="forgot">Forgot password?</button></div>
       <div class="login-new">New here? <button type="button" class="linkbtn" data-auth="register"><b>Request access</b></button></div>
     </form>
-    <form id="auth-register" style="display:none" autocomplete="on">
+    <form id="auth-register" style="display:none" autocomplete="off">
       <h2>Request access</h2>
       <p class="muted" style="font-size:13px;margin:-4px 0 4px">Create your sign-in. You can use CCT TeamSync once the Administrator approves your request.</p>
       <label class="fl">Full name<input name="name" autocomplete="name" maxlength="80" required></label>
-      <label class="fl">Work email<input name="email" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="name@company.com" required></label>
+      <label class="fl">Work email<input name="email" type="text" inputmode="email" autocomplete="off" data-lpignore="true" data-form-type="other" autocapitalize="none" spellcheck="false" placeholder="name@company.com" required></label>
       <label class="fl">Job title<input name="title" maxlength="80" placeholder="e.g. Tax Associate"></label>
       <label class="fl">Create a password<input name="pw" type="password" autocomplete="new-password" required></label>
       <label class="fl">Confirm password<input name="pw2" type="password" autocomplete="new-password" required></label>
@@ -838,7 +838,7 @@ table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
       <div id="forgotOwner" style="display:none"><p class="muted" style="font-size:13px;margin:0 0 10px">Use the Administrator recovery steps from your setup guide.</p>
         <button type="button" class="btn primary wide" data-owner-reset>Set a new password</button></div>
       <div id="forgotUser"><p class="muted" style="font-size:13px;margin:0 0 10px">Enter your email address. The Administrator will be notified and will give you a temporary password.</p>
-        <label class="fl">Email<input name="userId" type="text" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="name@company.com"></label>
+        <label class="fl">Email<input name="userId" type="text" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="name@company.com"></label>
         <button class="btn primary wide" type="submit">Request reset</button></div>
       <div class="login-links"><button type="button" class="linkbtn" data-auth="login">← Back to sign in</button></div>
     </form>
@@ -1314,7 +1314,7 @@ document.querySelectorAll(".modal > .hd").forEach(hd => { const b = document.cre
   b.onclick = () => { const m = hd.parentElement; m.classList.toggle("max"); b.textContent = m.classList.contains("max") ? "⤡" : "⤢"; };
   const x = hd.querySelector("[data-close]"); hd.insertBefore(b, x || null); });
 // ---------- new version available? ----------
-const BUILD = "20261106165833";
+const BUILD = "20261109183413";
 async function checkForUpdate(){
   try { const r = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }); if (!r.ok) return; const t = await r.text();
     const m = t.match(/const BUILD = "(\d+)"/); if (m && m[1] !== BUILD && !document.querySelector(".updbar")) {
