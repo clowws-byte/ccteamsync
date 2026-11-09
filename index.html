@@ -360,7 +360,8 @@ select.brsel{max-width:150px}
 .stg-cancelled{background:#f1f1f4;color:#6b7280;text-decoration:line-through}
 .st-cancelled{background:#f1f1f4;color:#6b7280}
 .modal{resize:both;min-width:min(340px,96vw);min-height:180px;width:min(480px,96vw);max-width:96vw!important;position:relative}
-.modal.max{width:96vw!important;max-width:96vw!important;height:92vh;max-height:92vh}
+.modal.max{width:96vw!important;max-width:96vw!important;height:auto;max-height:92vh;resize:none}
+.scrim.on .modal{animation-fill-mode:none}
 .modal .hd .mxbtn{margin-left:auto;margin-right:6px}
 .modal .tsp-wrap{max-height:none}.modal.max .tsp-wrap{max-height:calc(92vh - 260px)}
 .modal::after{content:"";position:absolute;right:4px;bottom:4px;width:10px;height:10px;border-right:2px solid var(--line);border-bottom:2px solid var(--line);border-radius:0 0 4px 0;pointer-events:none;opacity:.8}
@@ -445,7 +446,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)!
 table tr{transition:background .2s}
 table tbody tr:hover,table tr:hover td{background:rgba(139,123,255,.05)}
 /* modals & toast */
-.scrim{background:rgba(43,35,64,.35);backdrop-filter:blur(4px)}
+.scrim{background:rgba(43,35,64,.42)}
 .scrim.on{animation:fadeIn .2s ease}
 .scrim.on .modal{animation:popIn .45s var(--bounce)}
 .modal{border-radius:22px}
@@ -1314,7 +1315,7 @@ document.querySelectorAll(".modal > .hd").forEach(hd => { const b = document.cre
   b.onclick = () => { const m = hd.parentElement; m.classList.toggle("max"); b.textContent = m.classList.contains("max") ? "⤡" : "⤢"; };
   const x = hd.querySelector("[data-close]"); hd.insertBefore(b, x || null); });
 // ---------- new version available? ----------
-const BUILD = "20261109183413";
+const BUILD = "20261109184645";
 async function checkForUpdate(){
   try { const r = await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }); if (!r.ok) return; const t = await r.text();
     const m = t.match(/const BUILD = "(\d+)"/); if (m && m[1] !== BUILD && !document.querySelector(".updbar")) {
